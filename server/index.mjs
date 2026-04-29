@@ -1435,6 +1435,28 @@ app.post("/api/reports", (request, response) => {
 });
 
 app.get("/api/reports/:id", async (request, response) => {
+  if (request.params.id === "krynsky-com-seed") {
+    response.json({
+      id: "krynsky-com-seed",
+      target: "krynsky.com",
+      host: "krynsky.com",
+      status: "complete",
+      stage: "complete",
+      progress: 100,
+      message: "Hand-curated seed report",
+      screenshotLimit: 14,
+      createdAt: "1997-01-08T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+      events: [],
+      discovery: null,
+      report: null,
+      error: null,
+      notifyEmail: null,
+      notificationStatus: "not_requested"
+    });
+    return;
+  }
+
   await refreshPersistedJobsForExternalRunner();
   const job = reportJobs.get(request.params.id);
   if (!job) {
