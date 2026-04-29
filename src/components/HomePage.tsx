@@ -1,8 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { FileText, Loader2, Search } from "lucide-react";
 import { krynskyTimeline } from "../data/krynskyTimeline";
-import type { ReportJobSummary, QueueSummary } from "../types";
-import { formatJobTime, reportStageLabel } from "../helpers";
+import type { ReportJobSummary } from "../types";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 
@@ -50,7 +49,6 @@ export function HomePage() {
   const [submitError, setSubmitError] = useState("");
   const [recentJobs, setRecentJobs] = useState<ReportJobSummary[]>([]);
   const [recentError, setRecentError] = useState("");
-  const [serviceQueue, setServiceQueue] = useState<QueueSummary | null>(null);
 
   const searchParams = new URLSearchParams(window.location.search);
   const isAdmin = searchParams.get("admin") === "1";
@@ -71,9 +69,6 @@ export function HomePage() {
         }
         if (!cancelled) {
           setRecentJobs(payload.jobs ?? []);
-          if (payload.queue) {
-            setServiceQueue(payload.queue);
-          }
           setRecentError("");
         }
       } catch (caught) {
@@ -109,11 +104,8 @@ export function HomePage() {
         throw new Error(payload.error ?? "Unable to create report job.");
       }
 
-      if (payload.existingReportId) {
-        window.location.assign(`/reports/generated/${payload.existingReportId}`);
-      } else {
-        window.location.assign(`/reports/generated/${payload.id}`);
-      }
+      const host = payload.host ?? domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+      window.location.assign(`/report/${encodeURIComponent(host)}`);
     } catch (caught) {
       setSubmitError(caught instanceof Error ? caught.message : "Unable to create report job.");
     } finally {
@@ -163,17 +155,6 @@ export function HomePage() {
                 Create Report
               </button>
             </form>
-
-            <div className="builder-note-row">
-              <p className="builder-note">
-                Use a public root domain. Local, private, and duplicate running jobs are blocked.
-              </p>
-              {serviceQueue && (
-                <p className="builder-service-status">
-                  {serviceQueue.activeJobCount}/{serviceQueue.maxActiveJobs} jobs active
-                </p>
-              )}
-            </div>
 
             {submitError && <p className="error-note">{submitError}</p>}
           </div>

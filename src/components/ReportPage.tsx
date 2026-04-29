@@ -16,8 +16,8 @@ function useSeedReportTitle() {
   }, []);
 }
 
-export function ReportPage({ id }: { id: string }) {
-  const isSeed = id === "krynsky-com-seed";
+export function ReportPage({ domain }: { domain: string }) {
+  const isSeed = domain === "krynsky.com" || domain === "krynsky-com-seed";
   const seedTitle = useSeedReportTitle();
 
   const [job, setJob] = useState<ReportJob | null>(null);
@@ -47,7 +47,7 @@ export function ReportPage({ id }: { id: string }) {
       }
       setFetchError("");
       try {
-        const response = await fetch(`/api/reports/${id}`);
+        const response = await fetch(`/api/reports/${encodeURIComponent(domain)}`);
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error ?? "Unable to load report.");
@@ -73,7 +73,7 @@ export function ReportPage({ id }: { id: string }) {
       if (interval) window.clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isSeed, isRunning]);
+  }, [domain, isSeed, isRunning]);
 
   async function cancelJob() {
     if (!job || !canCancelJob(job)) return;
@@ -99,7 +99,7 @@ export function ReportPage({ id }: { id: string }) {
       const response = await fetch(`/api/reports/${job.id}/retry`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to retry job.");
-      window.location.assign(`/reports/generated/${payload.id}`);
+      window.location.assign(`/report/${encodeURIComponent(payload.host ?? domain)}`);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to retry job.");
       setActionSaving(false);

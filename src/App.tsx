@@ -96,19 +96,9 @@ export function App() {
     return <ReportsPage />;
   }
 
-  if (pathname === "/reports/krynsky-com") {
-    window.location.assign("/reports/generated/krynsky-com-seed");
-    return null;
-  }
-
-  const shareMatch = pathname.match(/^\/reports\/generated\/([^/]+)\/share$/);
-  if (shareMatch) {
-    return <ReportPage id={shareMatch[1]} />;
-  }
-
-  const reportMatch = pathname.match(/^\/reports\/generated\/([^/]+)$/);
+  const reportMatch = pathname.match(/^\/report\/([^/]+?)(?:\/share)?$/);
   if (reportMatch) {
-    return <ReportPage id={reportMatch[1]} />;
+    return <ReportPage domain={decodeURIComponent(reportMatch[1])} />;
   }
 
   return <HomePage />;

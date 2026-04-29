@@ -231,11 +231,7 @@ export function entryQualityDetails(entry: DraftReportEntry) {
 }
 
 export function generatedSharePath(job: ReportJob | ReportJobSummary) {
-  if ("report" in job) {
-    return job.report?.generatedShareUrl ?? (job.report?.generatedReportUrl ? `${job.report.generatedReportUrl}/share` : `/reports/generated/${job.id}/share`);
-  }
-
-  return job.generatedShareUrl ?? (job.generatedReportUrl ? `${job.generatedReportUrl}/share` : `/reports/generated/${job.id}/share`);
+  return `/report/${encodeURIComponent(job.host)}/share`;
 }
 
 export function absoluteAppUrl(pathname: string) {

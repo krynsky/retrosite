@@ -12,7 +12,7 @@ export function ReportCard({
   onDelete?: (id: string) => void;
 }) {
   const isRunning = job.status === "queued" || job.status === "running";
-  const reportUrl = `/reports/generated/${job.id}`;
+  const reportUrl = `/report/${encodeURIComponent(job.host)}`;
 
   return (
     <article className={`report-card ${job.status}`}>

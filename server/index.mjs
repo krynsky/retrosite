@@ -1400,7 +1400,7 @@ app.post("/api/reports", (request, response) => {
       (job) => job.host === host && (job.status === "complete" || job.status === "incomplete")
     );
     if (existingCompleteJob) {
-      response.status(200).json({ existingReportId: existingCompleteJob.id });
+      response.status(200).json({ existingReportId: existingCompleteJob.id, host: existingCompleteJob.host });
       return;
     }
 
@@ -1434,8 +1434,19 @@ app.post("/api/reports", (request, response) => {
   }
 });
 
+function findJobByIdOrDomain(key) {
+  const byId = reportJobs.get(key);
+  if (byId) return byId;
+  for (const job of reportJobs.values()) {
+    if (job.host === key) return job;
+  }
+  return null;
+}
+
 app.get("/api/reports/:id", async (request, response) => {
-  if (request.params.id === "krynsky-com-seed") {
+  const key = request.params.id;
+
+  if (key === "krynsky.com") {
     response.json({
       id: "krynsky-com-seed",
       target: "krynsky.com",
@@ -1458,7 +1469,7 @@ app.get("/api/reports/:id", async (request, response) => {
   }
 
   await refreshPersistedJobsForExternalRunner();
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(key);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1468,14 +1479,14 @@ app.get("/api/reports/:id", async (request, response) => {
 });
 
 app.delete("/api/reports/:id", async (request, response) => {
-  const jobId = request.params.id;
+  const key = request.params.id;
 
-  if (jobId === "krynsky-com-seed") {
+  if (key === "krynsky-com-seed" || key === "krynsky.com") {
     response.status(403).json({ error: "Cannot delete the seed report." });
     return;
   }
 
-  const job = reportJobs.get(jobId);
+  const job = findJobByIdOrDomain(key);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1486,7 +1497,7 @@ app.delete("/api/reports/:id", async (request, response) => {
     return;
   }
 
-  reportJobs.delete(jobId);
+  reportJobs.delete(job.id);
 
   const outputDir = reportOutputDir(jobId);
   try {
@@ -1499,7 +1510,7 @@ app.delete("/api/reports/:id", async (request, response) => {
 });
 
 app.post("/api/reports/:id/cancel", (request, response) => {
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1521,7 +1532,7 @@ app.post("/api/reports/:id/cancel", (request, response) => {
 });
 
 app.post("/api/reports/:id/retry", (request, response) => {
-  const sourceJob = reportJobs.get(request.params.id);
+  const sourceJob = findJobByIdOrDomain(request.params.id);
   if (!sourceJob) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1569,7 +1580,7 @@ app.post("/api/reports/:id/retry", (request, response) => {
 });
 
 app.patch("/api/reports/:id", (request, response) => {
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1628,7 +1639,7 @@ app.patch("/api/reports/:id", (request, response) => {
 });
 
 app.patch("/api/reports/:id/entries", (request, response) => {
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
     return;
@@ -1710,7 +1721,7 @@ app.patch("/api/reports/:id/entries", (request, response) => {
 });
 
 app.get("/api/reports/:id/export.md", (request, response) => {
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).send("Report job not found.");
     return;
@@ -1728,7 +1739,7 @@ app.get("/api/reports/:id/export.md", (request, response) => {
 });
 
 app.get("/api/reports/:id/export.html", (request, response) => {
-  const job = reportJobs.get(request.params.id);
+  const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).send("Report job not found.");
     return;
