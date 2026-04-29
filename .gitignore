@@ -4,5 +4,6 @@ dist/
 server/generated/
 npm-debug.log*
 *.log
-retrosite-*.png
+docs/screenshots/
+*.png
 *.local

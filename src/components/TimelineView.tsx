@@ -1,8 +1,7 @@
-import { CSSProperties, useState, useEffect } from "react";
+import { CSSProperties, ReactNode, useState, useEffect } from "react";
 import { ArrowUpRight, ZoomIn, Maximize2 } from "lucide-react";
 import type { DraftReportEntry } from "../types";
 import type { TimelineEntry } from "../data/krynskyTimeline";
-import { entryQualityLabel, entryQualityTone } from "../helpers";
 
 type NormalizedEntry = {
   date: string;
@@ -33,6 +32,17 @@ function normalizeSeedEntry(entry: TimelineEntry): NormalizedEntry {
   };
 }
 
+function summarizeTechStack(techStack: string): string {
+  const core = techStack.split(" · ")[0];
+  const parts = core.split(",").map((s) => s.trim());
+  const cms = parts.find((p) => /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(p));
+  const theme = parts.find((p) => /^theme:/i.test(p));
+  if (cms && theme) return `${cms}, ${theme}`;
+  if (cms) return cms;
+  if (parts.length <= 2) return core;
+  return parts.slice(0, 2).join(", ");
+}
+
 function normalizeGeneratedEntry(entry: DraftReportEntry): NormalizedEntry {
   return {
     date: entry.date,
@@ -48,11 +58,17 @@ function normalizeGeneratedEntry(entry: DraftReportEntry): NormalizedEntry {
 }
 
 export function TimelineView({
-  title,
+  domain,
+  range,
+  createdAt,
+  actions,
   seedEntries,
   generatedEntries
 }: {
-  title: string;
+  domain: string;
+  range: string;
+  createdAt?: string;
+  actions?: ReactNode;
   seedEntries?: TimelineEntry[];
   generatedEntries?: DraftReportEntry[];
 }) {
@@ -77,7 +93,18 @@ export function TimelineView({
   return (
     <>
       <div className="section-heading">
-        <h1>{title}</h1>
+        {(createdAt || actions) && (
+          <div className="timeline-header-row">
+            {createdAt && (
+              <span className="timeline-created">
+                Timeline created on {new Date(createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            {actions && <div className="timeline-actions">{actions}</div>}
+          </div>
+        )}
+        <h1>{domain}</h1>
+        <span className="timeline-range">{range}</span>
       </div>
 
       <div className="timeline-layout">
@@ -91,7 +118,7 @@ export function TimelineView({
               onClick={() => setActiveEntryIndex(index)}
             >
               <span>{entry.date.slice(0, 4)}</span>
-              {entry.techStack}
+              {summarizeTechStack(entry.techStack)}
             </button>
           ))}
         </nav>
@@ -100,9 +127,7 @@ export function TimelineView({
           <div className="timeline-main">
             <article className="timeline-detail">
               <div className="detail-copy">
-                <span>{activeEntry.date}</span>
-                <h3>{activeEntry.title}</h3>
-                <p>{activeEntry.notes}</p>
+                <span>Captured on {activeEntry.date}</span>
                 <dl>
                   <div>
                     <dt>Tech stack</dt>
@@ -117,22 +142,27 @@ export function TimelineView({
                     </dd>
                   </div>
                 </dl>
-                {isGenerated && activeEntry.quality && (
-                  <div className={`entry-quality ${entryQualityTone({
-                    screenshotStatus: "rendered",
-                    screenshotQuality: activeEntry.quality,
-                    replacementOf: activeEntry.replacementOf ?? null,
-                    replacementAttempts: activeEntry.replacementAttempts ?? []
-                  } as DraftReportEntry)}`}>
-                    <strong>{entryQualityLabel({
-                      screenshotStatus: "rendered",
-                      screenshotQuality: activeEntry.quality,
-                      replacementOf: activeEntry.replacementOf ?? null,
-                      replacementAttempts: activeEntry.replacementAttempts ?? []
-                    } as DraftReportEntry)}</strong>
-                  </div>
-                )}
               </div>
+              {activeEntry.imageUrl && (
+                <div className="image-mode-toggle" aria-label="Screenshot view mode">
+                  <button
+                    type="button"
+                    className={imageMode === "focus" ? "active" : ""}
+                    onClick={() => setImageMode("focus")}
+                  >
+                    <ZoomIn size={16} />
+                    Focus
+                  </button>
+                  <button
+                    type="button"
+                    className={imageMode === "full" ? "active" : ""}
+                    onClick={() => setImageMode("full")}
+                  >
+                    <Maximize2 size={16} />
+                    Full
+                  </button>
+                </div>
+              )}
               {activeEntry.imageUrl && (
                 <div
                   className={`screenshot-frame ${imageMode}`}
@@ -144,24 +174,6 @@ export function TimelineView({
                     } as CSSProperties
                   }
                 >
-                  <div className="image-mode-toggle" aria-label="Screenshot view mode">
-                    <button
-                      type="button"
-                      className={imageMode === "focus" ? "active" : ""}
-                      onClick={() => setImageMode("focus")}
-                    >
-                      <ZoomIn size={16} />
-                      Focus
-                    </button>
-                    <button
-                      type="button"
-                      className={imageMode === "full" ? "active" : ""}
-                      onClick={() => setImageMode("full")}
-                    >
-                      <Maximize2 size={16} />
-                      Full
-                    </button>
-                  </div>
                   <img src={activeEntry.imageUrl} alt={`${activeEntry.date} ${activeEntry.title}`} />
                 </div>
               )}

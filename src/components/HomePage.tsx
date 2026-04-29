@@ -126,8 +126,8 @@ export function HomePage() {
     }
   }
 
-  const seed = seedReportCard();
-  const allCards = [seed, ...recentJobs];
+  const hasGeneratedKrynsky = recentJobs.some((job) => job.host === "krynsky.com");
+  const allCards = hasGeneratedKrynsky ? recentJobs : [seedReportCard(), ...recentJobs];
   const displayCards = allCards.slice(0, 8);
 
   return (
@@ -137,7 +137,7 @@ export function HomePage() {
       <section className="hero-shell">
         <div className="hero-copy">
           <h1>Retrosite</h1>
-          <p>Turn a domain into a historical visual timeline using the wayback machine.</p>
+          <p>Create a historical visual timeline of your website using the Wayback Machine.</p>
 
           <div className="hero-actions">
             <form className="builder-form hero-builder-form" onSubmit={handleSubmit}>

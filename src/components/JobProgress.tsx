@@ -11,27 +11,51 @@ import {
   queueProgressText
 } from "../helpers";
 
+const userSteps = [
+  { id: "queued", label: "Queue", description: "Waiting in queue…" },
+  { id: "discovering", label: "Discover", description: "Searching the Wayback Machine…" },
+  { id: "selecting", label: "Index", description: "Grouping capture years…" },
+  { id: "rendering", label: "Render", description: "Taking screenshots…" },
+  { id: "repairing", label: "Repair", description: "Replacing weak captures…" },
+  { id: "curating", label: "Curate", description: "Building your timeline…" }
+];
+
+function userStepState(jobStage: string, jobStatus: string, stepId: string): "done" | "active" | "pending" {
+  if (jobStatus === "failed") {
+    return stepId === jobStage ? "active" : "pending";
+  }
+  if (jobStatus === "complete" || jobStatus === "incomplete") {
+    return "done";
+  }
+  const currentIndex = userSteps.findIndex((s) => s.id === jobStage);
+  const stepIndex = userSteps.findIndex((s) => s.id === stepId);
+  if (stepIndex < currentIndex) return "done";
+  if (stepIndex === currentIndex) return "active";
+  return "pending";
+}
+
 export function JobProgress({
   job,
+  isAdmin = false,
   canceling,
   onCancel,
   retrying,
   onRetry,
-  showActions = true,
-  stats
+  showActions = true
 }: {
   job: ReportJob;
+  isAdmin?: boolean;
   canceling: boolean;
   onCancel: () => void;
   retrying: boolean;
   onRetry: () => void;
   showActions?: boolean;
-  stats?: Array<string | false | null | undefined>;
 }) {
-  const visibleStats = stats?.filter((stat): stat is string => Boolean(stat)) ?? [];
+  const isRunning = job.status === "queued" || job.status === "running";
+  const activeUserStep = userSteps.find((s) => s.id === job.stage);
 
   return (
-    <section className="report-job-panel generated-job-panel" aria-label="Generated report job progress">
+    <section className="report-job-panel generated-job-panel" aria-label="Report job progress">
       <div className="discovery-header">
         <div>
           <span className="eyebrow">
@@ -39,7 +63,10 @@ export function JobProgress({
             Report job
           </span>
           <h1>{job.host}</h1>
-          <p>{job.message}</p>
+          {isAdmin
+            ? <p>{job.message}</p>
+            : <p className="friendly-stage-message">{activeUserStep?.description ?? job.message}</p>
+          }
         </div>
         {showActions && (
           <div className="generated-actions inline-actions">
@@ -53,49 +80,58 @@ export function JobProgress({
                 Retry job
               </button>
             )}
-            <a className="ghost-link compact" href="/">
-              Create another report
-            </a>
+            {!isRunning && (
+              <a className="ghost-link compact" href="/">
+                Create another report
+              </a>
+            )}
           </div>
         )}
       </div>
-
-      {visibleStats.length > 0 && (
-        <section className="job-report-stats" aria-label="Generated report stats">
-          {visibleStats.map((stat) => (
-            <span key={stat}>{stat}</span>
-          ))}
-        </section>
-      )}
 
       <div className="job-progress" aria-label={`Report progress ${job.progress}%`}>
         <span style={{ width: `${job.progress}%` }} />
       </div>
 
-      <div className="job-stage-summary">
-        <strong>{reportStageLabel(job.stage)}</strong>
-        <span>{queueProgressText(job)}</span>
-      </div>
+      {!isAdmin && (
+        <ol className="user-step-list" aria-label="Report steps">
+          {userSteps.map((step, index) => (
+            <li key={step.id} className={`user-step ${userStepState(job.stage, job.status, step.id)}`}>
+              <span className="user-step-number">{index + 1}</span>
+              <span className="user-step-label">{step.label}</span>
+            </li>
+          ))}
+        </ol>
+      )}
 
-      <div className="job-stage-list" aria-label="Report job stages">
-        {reportStageSteps.map((step) => {
-          const stageUpdates = stageEventsForJob(job, step.id);
+      {isAdmin && (
+        <>
+          <div className="job-stage-summary">
+            <strong>{reportStageLabel(job.stage)}</strong>
+            <span>{queueProgressText(job)}</span>
+          </div>
 
-          return (
-            <div key={step.id} className={reportStageState(job, step.id)}>
-              <strong>{step.title}</strong>
-              <span>{step.detail}</span>
-              {stageUpdates.length > 0 && (
-                <ul className="job-stage-updates" aria-label={`${step.title} status updates`}>
-                  {stageUpdates.map((event) => (
-                    <li key={`${event.at}-${event.message}`}>{event.message}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
-      </div>
+          <div className="job-stage-list" aria-label="Report job stages">
+            {reportStageSteps.map((step) => {
+              const stageUpdates = stageEventsForJob(job, step.id);
+
+              return (
+                <div key={step.id} className={reportStageState(job, step.id)}>
+                  <strong>{step.title}</strong>
+                  <span>{step.detail}</span>
+                  {stageUpdates.length > 0 && (
+                    <ul className="job-stage-updates" aria-label={`${step.title} status updates`}>
+                      {stageUpdates.map((event) => (
+                        <li key={`${event.at}-${event.message}`}>{event.message}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {job.error && <p className="error-note">{job.error}</p>}
       {job.status === "failed" && <p className="warning-note">{reportFailureHint(job.error)}</p>}

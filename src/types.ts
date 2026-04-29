@@ -76,10 +76,21 @@ export type DraftReport = {
   generatedShareUrl?: string;
 };
 
+export type ReportVersionSummary = {
+  version: number;
+  id: string;
+  status: string;
+  screenshotLimit: number;
+  createdAt: string;
+  updatedAt: string;
+  entryCount: number;
+};
+
 export type ReportJob = {
   id: string;
   target: string;
   host: string;
+  version?: number;
   status: "queued" | "running" | "complete" | "incomplete" | "failed" | "canceled";
   stage: string;
   progress: number;
@@ -107,6 +118,7 @@ export type ReportJobSummary = {
   id: string;
   target: string;
   host: string;
+  version?: number;
   status: "queued" | "running" | "complete" | "incomplete" | "failed" | "canceled";
   stage: string;
   progress: number;

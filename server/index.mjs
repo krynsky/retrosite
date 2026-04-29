@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import sharp from "sharp";
 import { writeNotificationOutbox } from "./notifications.mjs";
 import { inferTechStack } from "./techstack.mjs";
 
@@ -20,8 +21,8 @@ const generatedRoot = process.env.RETROSITE_GENERATED_ROOT ?? path.join(__dirnam
 const notificationOutboxRoot = process.env.RETROSITE_NOTIFICATION_OUTBOX ?? path.join(generatedRoot, "notifications");
 const clientDistRoot = path.join(__dirname, "..", "dist");
 const clientIndexFile = path.join(clientDistRoot, "index.html");
-const defaultScreenshotLimit = Number(process.env.RETROSITE_SCREENSHOT_LIMIT ?? 5);
-const maxScreenshotLimit = Number(process.env.RETROSITE_MAX_SCREENSHOT_LIMIT ?? 24);
+const defaultScreenshotLimit = Number(process.env.RETROSITE_SCREENSHOT_LIMIT ?? 35);
+const maxScreenshotLimit = Number(process.env.RETROSITE_MAX_SCREENSHOT_LIMIT ?? 50);
 const replacementLimit = Number(process.env.RETROSITE_REPLACEMENT_LIMIT ?? 8);
 const cdxTimeoutMs = Number(process.env.RETROSITE_CDX_TIMEOUT_MS ?? 45000);
 const cdxRetryCount = Number(process.env.RETROSITE_CDX_RETRIES ?? 2);
@@ -167,12 +168,13 @@ function queueMetadata(job) {
   };
 }
 
-function createQueuedReportJob({ host, screenshotLimit, notifyEmail, message = "Report job created." }) {
+function createQueuedReportJob({ host, screenshotLimit, notifyEmail, version = 1, message = "Report job created." }) {
   const now = new Date().toISOString();
   return {
     id: randomUUID(),
     target: host,
     host,
+    version,
     screenshotLimit,
     status: "queued",
     stage: "queued",
@@ -279,7 +281,58 @@ async function analyzeScreenshot(filePath) {
   };
 }
 
-function classifyRender({ screenshot, diagnostics }) {
+async function scoreScreenshotVisuals(filePath) {
+  try {
+    const image = sharp(filePath);
+    const stats = await image.stats();
+    const { data, info } = await image.resize(200, null, { fit: "inside" }).greyscale().raw().toBuffer({ resolveWithObject: true });
+
+    const totalPixels = info.width * info.height;
+
+    const meanR = stats.channels[0]?.mean ?? 255;
+    const meanG = stats.channels[1]?.mean ?? 255;
+    const meanB = stats.channels[2]?.mean ?? 255;
+    const stdR = stats.channels[0]?.stdev ?? 0;
+    const stdG = stats.channels[1]?.stdev ?? 0;
+    const stdB = stats.channels[2]?.stdev ?? 0;
+    const colorStdDev = (stdR + stdG + stdB) / 3;
+
+    let whitePixels = 0;
+    for (let i = 0; i < stats.channels.length && i < 3; i++) {
+      // approximate from stats: if mean is very high and stddev is low, most pixels are white
+    }
+    // Count near-white pixels from the downsampled greyscale buffer
+    let brightPixels = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] > 240) brightPixels++;
+    }
+    const whiteRatio = brightPixels / totalPixels;
+
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < data.length; i++) {
+      hist[data[i]]++;
+    }
+    let entropy = 0;
+    for (const count of hist) {
+      if (count === 0) continue;
+      const p = count / totalPixels;
+      entropy -= p * Math.log2(p);
+    }
+
+    return { colorStdDev, whiteRatio, entropy, score: computeVisualScore(colorStdDev, whiteRatio, entropy) };
+  } catch {
+    return { colorStdDev: 0, whiteRatio: 1, entropy: 0, score: 0 };
+  }
+}
+
+function computeVisualScore(colorStdDev, whiteRatio, entropy) {
+  const colorScore = Math.min(colorStdDev / 60, 1) * 30;
+  const whiteScore = Math.max(1 - whiteRatio, 0) * 30;
+  const entropyScore = Math.min(entropy / 7, 1) * 40;
+  return Math.round(colorScore + whiteScore + entropyScore);
+}
+
+function classifyRender({ screenshot, diagnostics, visualScore }) {
   const reasons = [];
   if (screenshot.bytes < 50000) {
     reasons.push("small screenshot file");
@@ -302,10 +355,14 @@ function classifyRender({ screenshot, diagnostics }) {
   if (diagnostics.bodyHeight < 220) {
     reasons.push("short rendered document");
   }
+  if (visualScore != null && visualScore < 25) {
+    reasons.push("low visual quality score");
+  }
 
   return {
     ...screenshot,
     diagnostics,
+    visualScore: visualScore ?? null,
     classification: reasons.length > 0 ? "weak" : "usable",
     reasons
   };
@@ -440,20 +497,23 @@ function summarizeCaptures(captures) {
 }
 
 function pickCandidateEras(captures) {
-  const candidates = [];
-  let previousYear = "";
+  const byYear = new Map();
   for (const capture of captures) {
     const year = capture.timestamp.slice(0, 4);
-    if (year !== previousYear) {
-      candidates.push({
-        timestamp: capture.timestamp,
-        date: timestampDate(capture.timestamp),
-        original: capture.original,
-        replayUrl: waybackReplayUrl(capture.timestamp, capture.original),
-        reason: "First unique homepage capture found for this year"
-      });
-      previousYear = year;
-    }
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(capture);
+  }
+
+  const candidates = [];
+  for (const [, yearCaptures] of byYear) {
+    const pick = yearCaptures[yearCaptures.length - 1];
+    candidates.push({
+      timestamp: pick.timestamp,
+      date: timestampDate(pick.timestamp),
+      original: pick.original,
+      replayUrl: waybackReplayUrl(pick.timestamp, pick.original),
+      reason: "Last homepage capture for this year"
+    });
   }
   return candidates;
 }
@@ -556,12 +616,58 @@ function curatedEntryCopy(entry) {
   };
 }
 
+function visualEraKey(entry) {
+  const core = entry.techStack.split(" · ")[0];
+  const parts = core.split(",").map((s) => s.trim());
+  const cms = parts.find((p) => /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(p)) ?? "";
+  const theme = parts.find((p) => /^theme:/i.test(p)) ?? "";
+  if (!theme) return null;
+  return `${cms}|${theme}`.toLowerCase();
+}
+
+function deduplicateByEra(entries) {
+  if (entries.length === 0) return entries;
+  const result = [entries[0]];
+  for (let i = 1; i < entries.length; i++) {
+    const key = visualEraKey(entries[i]);
+    const prevKey = visualEraKey(entries[i - 1]);
+    if (key === null || prevKey === null || key !== prevKey) {
+      result.push(entries[i]);
+    }
+  }
+  return result;
+}
+
+function bestEntryPerYear(entries) {
+  const byYear = new Map();
+  for (const entry of entries) {
+    const year = entry.date.slice(0, 4);
+    const existing = byYear.get(year);
+    if (!existing) {
+      byYear.set(year, entry);
+      continue;
+    }
+    const entryUsable = entry.screenshotQuality?.classification === "usable";
+    const existingUsable = existing.screenshotQuality?.classification === "usable";
+    const entryScore = entry.screenshotQuality?.visualScore ?? 0;
+    const existingScore = existing.screenshotQuality?.visualScore ?? 0;
+    if (entryUsable && !existingUsable) {
+      byYear.set(year, entry);
+    } else if (entryUsable && existingUsable && entryScore > existingScore) {
+      byYear.set(year, entry);
+    }
+  }
+  return [...byYear.values()];
+}
+
 function curateDraftReport(job) {
   const renderedEntries = job.report.entries.filter((entry) => entry.screenshotStatus === "rendered");
-  const usableEntries = renderedEntries.filter((entry) => entry.screenshotQuality?.classification === "usable");
-  const selectedEntries = usableEntries.length > 0 ? usableEntries : renderedEntries;
+  const selectedEntries = bestEntryPerYear(renderedEntries);
 
-  job.report.curatedEntries = selectedEntries.map(curatedEntryCopy);
+  const sorted = selectedEntries.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const deduplicated = deduplicateByEra(sorted);
+
+  job.report.curatedEntries = deduplicated.map(curatedEntryCopy);
   job.report.generatedReportUrl = `/reports/generated/${job.id}`;
   job.report.generatedShareUrl = `/reports/generated/${job.id}/share`;
   job.report.publicationStatus = job.report.publicationStatus ?? "draft";
@@ -695,13 +801,14 @@ async function renderEntryScreenshot({ context, job, entry, screenshotDir, index
     const diagnostics = await collectRenderDiagnostics(page);
     await page.screenshot({ path: filePath, fullPage: true, timeout: 15000 });
     const screenshot = await analyzeScreenshot(filePath);
+    const visuals = await scoreScreenshotVisuals(filePath);
 
     const techStackResult = await inferTechStack(page).catch(() => null);
 
     entry.screenshotStatus = "rendered";
     entry.screenshotUrl = screenshotUrl;
     entry.screenshotError = null;
-    entry.screenshotQuality = classifyRender({ screenshot, diagnostics });
+    entry.screenshotQuality = classifyRender({ screenshot, diagnostics, visualScore: visuals.score });
     entry.renderAttempt = attemptLabel;
     if (techStackResult) {
       entry.techStack = techStackResult.techStack;
@@ -855,6 +962,7 @@ function publicJob(job) {
     id: job.id,
     target: job.target,
     host: job.host,
+    version: job.version ?? 1,
     status: job.status,
     stage: job.stage,
     progress: job.progress,
@@ -881,6 +989,7 @@ function publicJobSummary(job) {
     id: job.id,
     target: job.target,
     host: job.host,
+    version: job.version ?? 1,
     status: job.status,
     stage: job.stage,
     progress: job.progress,
@@ -888,8 +997,8 @@ function publicJobSummary(job) {
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: job.report?.generatedReportUrl ?? `/reports/generated/${job.id}`,
-    generatedShareUrl: job.report?.generatedShareUrl ?? `${job.report?.generatedReportUrl ?? `/reports/generated/${job.id}`}/share`,
+    generatedReportUrl: `/report/${encodeURIComponent(job.host)}`,
+    generatedShareUrl: `/report/${encodeURIComponent(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error,
     thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
@@ -1364,7 +1473,15 @@ app.get("/api/reports", async (request, response) => {
   const offset = Math.max(0, Number(request.query.offset ?? 0)) || 0;
   const search = String(request.query.search ?? "").trim().toLowerCase();
 
-  let jobs = [...reportJobs.values()]
+  const latestByDomain = new Map();
+  for (const job of reportJobs.values()) {
+    const existing = latestByDomain.get(job.host);
+    if (!existing || (job.version ?? 1) > (existing.version ?? 1)) {
+      latestByDomain.set(job.host, job);
+    }
+  }
+
+  let jobs = [...latestByDomain.values()]
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 
   if (search) {
@@ -1422,7 +1539,8 @@ app.post("/api/reports", (request, response) => {
     const job = createQueuedReportJob({
       host,
       screenshotLimit: requestedScreenshotLimit,
-      notifyEmail
+      notifyEmail,
+      version: nextVersionForDomain(host)
     });
 
     reportJobs.set(job.id, job);
@@ -1434,43 +1552,67 @@ app.post("/api/reports", (request, response) => {
   }
 });
 
-function findJobByIdOrDomain(key) {
+function findAllVersionsForDomain(domain) {
+  return [...reportJobs.values()]
+    .filter((job) => job.host === domain)
+    .sort((a, b) => (b.version ?? 1) - (a.version ?? 1));
+}
+
+function findJobByIdOrDomain(key, version) {
   const byId = reportJobs.get(key);
   if (byId) return byId;
-  for (const job of reportJobs.values()) {
-    if (job.host === key) return job;
+  const domainJobs = findAllVersionsForDomain(key);
+  if (domainJobs.length === 0) return null;
+  if (version != null) {
+    return domainJobs.find((j) => (j.version ?? 1) === version) ?? null;
   }
-  return null;
+  return domainJobs[0];
+}
+
+function nextVersionForDomain(domain) {
+  const versions = findAllVersionsForDomain(domain);
+  if (versions.length === 0) return 1;
+  return (versions[0].version ?? 1) + 1;
+}
+
+function seedReportJob() {
+  return {
+    id: "krynsky-com-seed",
+    target: "krynsky.com",
+    host: "krynsky.com",
+    version: 0,
+    status: "complete",
+    stage: "complete",
+    progress: 100,
+    message: "Hand-curated seed report",
+    screenshotLimit: 14,
+    createdAt: "1997-01-08T00:00:00.000Z",
+    updatedAt: "2025-01-01T00:00:00.000Z",
+    events: [],
+    discovery: null,
+    report: null,
+    error: null,
+    notifyEmail: null,
+    notificationStatus: "not_requested"
+  };
 }
 
 app.get("/api/reports/:id", async (request, response) => {
   const key = request.params.id;
 
-  if (key === "krynsky.com") {
-    response.json({
-      id: "krynsky-com-seed",
-      target: "krynsky.com",
-      host: "krynsky.com",
-      status: "complete",
-      stage: "complete",
-      progress: 100,
-      message: "Hand-curated seed report",
-      screenshotLimit: 14,
-      createdAt: "1997-01-08T00:00:00.000Z",
-      updatedAt: "2025-01-01T00:00:00.000Z",
-      events: [],
-      discovery: null,
-      report: null,
-      error: null,
-      notifyEmail: null,
-      notificationStatus: "not_requested"
-    });
+  await refreshPersistedJobsForExternalRunner();
+  const version = request.query.version ? Number(request.query.version) : undefined;
+
+  if (key === "krynsky.com" && version === 0) {
+    response.json(seedReportJob());
     return;
   }
-
-  await refreshPersistedJobsForExternalRunner();
-  const job = findJobByIdOrDomain(key);
+  const job = findJobByIdOrDomain(key, version);
   if (!job) {
+    if (key === "krynsky.com" && version == null) {
+      response.json(seedReportJob());
+      return;
+    }
     response.status(404).json({ error: "Report job not found." });
     return;
   }
@@ -1478,10 +1620,91 @@ app.get("/api/reports/:id", async (request, response) => {
   response.json(publicJob(job));
 });
 
+app.get("/api/reports/:id/versions", async (request, response) => {
+  const key = request.params.id;
+  await refreshPersistedJobsForExternalRunner();
+  const versions = findAllVersionsForDomain(key);
+
+  const versionEntries = versions.map((job) => ({
+    version: job.version ?? 1,
+    id: job.id,
+    status: job.status,
+    screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    entryCount: job.report?.curatedEntries?.length ?? 0
+  }));
+
+  if (key === "krynsky.com") {
+    versionEntries.push({
+      version: 0,
+      id: "krynsky-com-seed",
+      status: "complete",
+      screenshotLimit: 14,
+      createdAt: "1997-01-08T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+      entryCount: 14
+    });
+  }
+
+  if (versionEntries.length === 0) {
+    response.status(404).json({ error: "No reports found for this domain." });
+    return;
+  }
+
+  versionEntries.sort((a, b) => b.version - a.version);
+  response.json({ domain: key, versions: versionEntries });
+});
+
+app.post("/api/reports/:id/rerun", (request, response) => {
+  const key = request.params.id;
+  const latestJob = findJobByIdOrDomain(key);
+  if (!latestJob) {
+    response.status(404).json({ error: "Report job not found." });
+    return;
+  }
+
+  const activeJobs = activeReportJobs();
+  if (activeJobs.length >= maxActiveJobCount()) {
+    response.status(429).json({
+      error: `Retrosite is already running ${activeJobs.length} report jobs. Try again after one finishes.`
+    });
+    return;
+  }
+
+  const duplicateActiveJob = activeJobs.find((j) => j.host === latestJob.host);
+  if (duplicateActiveJob) {
+    response.status(409).json({
+      error: `A report for ${latestJob.host} is already ${duplicateActiveJob.status}.`
+    });
+    return;
+  }
+
+  const retryAfterMs = checkCreateRateLimit(request);
+  if (retryAfterMs !== null) {
+    sendCreateRateLimitResponse(response, retryAfterMs);
+    return;
+  }
+
+  const newVersion = nextVersionForDomain(latestJob.host);
+  const job = createQueuedReportJob({
+    host: latestJob.host,
+    screenshotLimit: defaultScreenshotLimit,
+    notifyEmail: null,
+    version: newVersion,
+    message: `Re-run (version ${newVersion}) created from version ${latestJob.version ?? 1}.`
+  });
+
+  reportJobs.set(job.id, job);
+  queuePersistJob(job);
+  response.status(202).json(publicJob(job));
+  enqueueReportJob(job);
+});
+
 app.delete("/api/reports/:id", async (request, response) => {
   const key = request.params.id;
 
-  if (key === "krynsky-com-seed" || key === "krynsky.com") {
+  if (key === "krynsky-com-seed") {
     response.status(403).json({ error: "Cannot delete the seed report." });
     return;
   }
@@ -1499,7 +1722,7 @@ app.delete("/api/reports/:id", async (request, response) => {
 
   reportJobs.delete(job.id);
 
-  const outputDir = reportOutputDir(jobId);
+  const outputDir = reportOutputDir(job.id);
   try {
     await rm(outputDir, { recursive: true, force: true });
   } catch {
@@ -1568,8 +1791,9 @@ app.post("/api/reports/:id/retry", (request, response) => {
 
   const job = createQueuedReportJob({
     host: sourceJob.host,
-    screenshotLimit: normalizeScreenshotLimit(sourceJob.screenshotLimit),
+    screenshotLimit: defaultScreenshotLimit,
     notifyEmail: sourceJob.notifyEmail ?? null,
+    version: nextVersionForDomain(sourceJob.host),
     message: `Retry created from ${sourceJob.status} report job ${sourceJob.id}.`
   });
 

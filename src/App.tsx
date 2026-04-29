@@ -96,6 +96,11 @@ export function App() {
     return <ReportsPage />;
   }
 
+  const versionMatch = pathname.match(/^\/report\/([^/]+?)\/v\/(\d+)(?:\/share)?$/);
+  if (versionMatch) {
+    return <ReportPage domain={decodeURIComponent(versionMatch[1])} version={Number(versionMatch[2])} />;
+  }
+
   const reportMatch = pathname.match(/^\/report\/([^/]+?)(?:\/share)?$/);
   if (reportMatch) {
     return <ReportPage domain={decodeURIComponent(reportMatch[1])} />;
