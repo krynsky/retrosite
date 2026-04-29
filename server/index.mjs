@@ -1361,12 +1361,20 @@ app.get("/api/reports", async (request, response) => {
   await refreshPersistedJobsForExternalRunner();
   const requestedLimit = Number(request.query.limit ?? 12);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 12;
-  const jobs = [...reportJobs.values()]
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, limit)
-    .map(publicJobSummary);
+  const offset = Math.max(0, Number(request.query.offset ?? 0)) || 0;
+  const search = String(request.query.search ?? "").trim().toLowerCase();
 
-  response.json({ jobs, queue: queueSummary() });
+  let jobs = [...reportJobs.values()]
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+
+  if (search) {
+    jobs = jobs.filter((job) => job.host.toLowerCase().includes(search));
+  }
+
+  const total = jobs.length;
+  const paged = jobs.slice(offset, offset + limit).map(publicJobSummary);
+
+  response.json({ jobs: paged, total, queue: queueSummary() });
 });
 
 app.post("/api/reports", (request, response) => {
@@ -1385,6 +1393,14 @@ app.post("/api/reports", (request, response) => {
         error: `A report for ${host} is already ${duplicateActiveJob.status}. Open the existing job instead of starting another.`,
         job: publicJobSummary(duplicateActiveJob)
       });
+      return;
+    }
+
+    const existingCompleteJob = [...reportJobs.values()].find(
+      (job) => job.host === host && (job.status === "complete" || job.status === "incomplete")
+    );
+    if (existingCompleteJob) {
+      response.status(200).json({ existingReportId: existingCompleteJob.id });
       return;
     }
 
