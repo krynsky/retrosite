@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { writeNotificationOutbox } from "./notifications.mjs";
+import { inferTechStack } from "./techstack.mjs";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4317);
@@ -695,11 +696,17 @@ async function renderEntryScreenshot({ context, job, entry, screenshotDir, index
     await page.screenshot({ path: filePath, fullPage: true, timeout: 15000 });
     const screenshot = await analyzeScreenshot(filePath);
 
+    const techStackResult = await inferTechStack(page).catch(() => null);
+
     entry.screenshotStatus = "rendered";
     entry.screenshotUrl = screenshotUrl;
     entry.screenshotError = null;
     entry.screenshotQuality = classifyRender({ screenshot, diagnostics });
     entry.renderAttempt = attemptLabel;
+    if (techStackResult) {
+      entry.techStack = techStackResult.techStack;
+      entry.techStackConfidence = techStackResult.techStackConfidence;
+    }
   } catch (error) {
     entry.screenshotStatus = "failed";
     entry.screenshotError = error instanceof Error ? error.message : "Unable to render screenshot.";
