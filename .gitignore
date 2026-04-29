@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vite/
+server/generated/
+npm-debug.log*
+*.log
+retrosite-*.png
+*.local
