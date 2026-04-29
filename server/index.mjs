@@ -1,6 +1,6 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1427,6 +1427,37 @@ app.get("/api/reports/:id", async (request, response) => {
   }
 
   response.json(publicJob(job));
+});
+
+app.delete("/api/reports/:id", async (request, response) => {
+  const jobId = request.params.id;
+
+  if (jobId === "krynsky-com-seed") {
+    response.status(403).json({ error: "Cannot delete the seed report." });
+    return;
+  }
+
+  const job = reportJobs.get(jobId);
+  if (!job) {
+    response.status(404).json({ error: "Report job not found." });
+    return;
+  }
+
+  if (job.status === "running" || job.status === "queued") {
+    response.status(409).json({ error: "Cannot delete an active job. Cancel it first." });
+    return;
+  }
+
+  reportJobs.delete(jobId);
+
+  const outputDir = reportOutputDir(jobId);
+  try {
+    await rm(outputDir, { recursive: true, force: true });
+  } catch {
+    // Directory may not exist
+  }
+
+  response.json({ ok: true });
 });
 
 app.post("/api/reports/:id/cancel", (request, response) => {
