@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { krynskyTimeline } from "./data/krynskyTimeline";
 import type { YearSummary, Candidate, DiscoveryResult, DraftReportEntry, DraftReport, ReportJob, ReportJobSummary, QueueSummary } from "./types";
+import { SiteNav } from "./components/SiteNav";
 import {
   reportStageSteps,
   buildDiscoveryMarkdown,
@@ -66,18 +67,6 @@ const processSteps = [
   }
 ];
 
-function SiteNav() {
-  return (
-    <header className="site-nav">
-      <a href="/" className="site-mark">
-        Retrosite
-      </a>
-      <nav aria-label="Primary navigation">
-        <a href="/about">About</a>
-      </nav>
-    </header>
-  );
-}
 
 function AboutPage() {
   return (
