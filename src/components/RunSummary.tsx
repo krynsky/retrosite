@@ -5,6 +5,39 @@ function computeStats(job: ReportJob) {
   const report = job.report;
   const entries = report?.entries ?? [];
   const curated = report?.curatedEntries ?? [];
+  const publishedSummary = report?.runSummary;
+
+  if (publishedSummary) {
+    return {
+      discoveryStats: publishedSummary.discovery
+        ? {
+            variants: publishedSummary.discovery.variants,
+            captures: publishedSummary.discovery.captures,
+            years: publishedSummary.discovery.years,
+            candidates: publishedSummary.discovery.candidates,
+            range: report?.stats.range ?? ""
+          }
+        : null,
+      renderStats: publishedSummary.rendering
+        ? {
+            attempted: publishedSummary.rendering.attempted,
+            successful: publishedSummary.rendering.usable,
+            weak: publishedSummary.rendering.weak,
+            failed: publishedSummary.rendering.failed,
+            replacements: publishedSummary.rendering.replacements
+          }
+        : null,
+      curationStats: publishedSummary.curation
+        ? {
+            beforeDedup: publishedSummary.curation.eligible,
+            afterCuration: publishedSummary.curation.finalEntries,
+            yearsRepresented: publishedSummary.curation.yearsRepresented,
+            totalYears: publishedSummary.curation.totalYears,
+            weakOnlyYears: publishedSummary.curation.weakOnlyYears
+          }
+        : null
+    };
+  }
 
   const discoveryStats = discovery ? {
     variants: discovery.queriedVariants.length,

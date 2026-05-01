@@ -35,6 +35,8 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const entries = job?.report?.curatedEntries ?? [];
   const hasEntries = entries.length > 0;
   const isAdmin = config.canEditReports;
+  const staticMarkdownExport = job?.report?.exports?.markdownUrl;
+  const staticHtmlExport = job?.report?.exports?.htmlUrl;
 
   useEffect(() => {
     let cancelled = false;
@@ -162,7 +164,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
     }
   }
 
-  const isSeedView = job?.id === "krynsky-com-seed";
+  const isSeedView = job?.id === "krynsky-com-seed" && !hasEntries;
   const reportDomain = job?.host ?? "";
   const reportRange = isSeedView ? seedRange : (job?.report?.stats.range.replace("-", " – ") ?? "");
 
@@ -221,11 +223,11 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
               generatedEntries={entries}
               actions={
                 <>
-                  <a className="primary-link compact" href={`/api/reports/${job.id}/export.md`}>
+                  <a className="primary-link compact" href={staticMarkdownExport ?? `/api/reports/${job.id}/export.md`}>
                     <FileText size={16} />
                     Export Markdown
                   </a>
-                  <a className="primary-link compact" href={`/api/reports/${job.id}/export.html`}>
+                  <a className="primary-link compact" href={staticHtmlExport ?? `/api/reports/${job.id}/export.html`}>
                     <FileText size={16} />
                     Export HTML
                   </a>

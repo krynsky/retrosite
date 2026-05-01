@@ -67,6 +67,32 @@ export type DraftReport = {
   summary: string;
   publicationStatus?: "draft" | "published";
   publishedAt?: string | null;
+  runSummary?: {
+    discovery?: {
+      variants: number;
+      captures: number;
+      years: number;
+      candidates: number;
+    };
+    rendering?: {
+      attempted: number;
+      usable: number;
+      weak: number;
+      failed: number;
+      replacements: number;
+    };
+    curation?: {
+      eligible: number;
+      finalEntries: number;
+      yearsRepresented: number;
+      totalYears: number;
+      weakOnlyYears: number;
+    };
+  };
+  exports?: {
+    markdownUrl?: string;
+    htmlUrl?: string;
+  };
   stats: {
     captureCount: number;
     candidateCount: number;
