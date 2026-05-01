@@ -9,6 +9,7 @@
     "dev:api": "node server/index.mjs",
     "start": "node server/index.mjs",
     "worker": "node server/worker.mjs",
+    "publish:timeline": "node scripts/publish-timeline.mjs",
     "test": "node --test server/*.test.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",

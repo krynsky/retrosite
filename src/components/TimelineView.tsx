@@ -1,5 +1,5 @@
 import { CSSProperties, ReactNode, useState, useEffect } from "react";
-import { ArrowUpRight, ZoomIn, Maximize2 } from "lucide-react";
+import { ArrowUpRight, Images, List, ZoomIn, Maximize2 } from "lucide-react";
 import type { DraftReportEntry } from "../types";
 import type { TimelineEntry } from "../data/krynskyTimeline";
 
@@ -78,12 +78,15 @@ export function TimelineView({
 
   const [activeEntryIndex, setActiveEntryIndex] = useState(0);
   const [imageMode, setImageMode] = useState<"focus" | "full">("focus");
+  const [displayMode, setDisplayMode] = useState<"timeline" | "image-only">("timeline");
   const activeEntry = entries[Math.min(activeEntryIndex, Math.max(entries.length - 1, 0))] ?? null;
   const isGenerated = !seedEntries;
+  const focusScale = activeEntry?.focusScale ?? (isGenerated ? 1.6 : 1);
 
   useEffect(() => {
     setActiveEntryIndex(0);
     setImageMode("focus");
+    setDisplayMode("timeline");
   }, [seedEntries, generatedEntries]);
 
   if (entries.length === 0) {
@@ -105,10 +108,31 @@ export function TimelineView({
         )}
         <h1>{domain}</h1>
         <span className="timeline-range">{range}</span>
+        <div className="timeline-display-mode" aria-label="Report display mode">
+          <button
+            type="button"
+            className={displayMode === "timeline" ? "active" : ""}
+            onClick={() => setDisplayMode("timeline")}
+          >
+            <List size={16} />
+            Timeline
+          </button>
+          <button
+            type="button"
+            className={displayMode === "image-only" ? "active" : ""}
+            onClick={() => setDisplayMode("image-only")}
+          >
+            <Images size={16} />
+            Image Only
+          </button>
+        </div>
       </div>
 
       <div className="timeline-layout">
-        <nav className="timeline-nav" aria-label="Timeline entries">
+        <nav
+          className={`timeline-nav${displayMode === "image-only" ? " image-only" : ""}`}
+          aria-label="Timeline entries"
+        >
           {entries.map((entry, index) => (
             <button
               key={`${entry.date}-${entry.source}`}
@@ -117,8 +141,21 @@ export function TimelineView({
               aria-label={`${entry.date.slice(0, 4)} ${entry.title}: ${entry.techStack}`}
               onClick={() => setActiveEntryIndex(index)}
             >
-              <span>{entry.date.slice(0, 4)}</span>
-              {summarizeTechStack(entry.techStack)}
+              {displayMode === "image-only" ? (
+                <>
+                  <span>{entry.date.slice(0, 4)}</span>
+                  {entry.imageUrl ? (
+                    <img src={entry.imageUrl} alt="" loading="lazy" />
+                  ) : (
+                    <em>No image</em>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>{entry.date.slice(0, 4)}</span>
+                  {summarizeTechStack(entry.techStack)}
+                </>
+              )}
             </button>
           ))}
         </nav>
@@ -168,7 +205,7 @@ export function TimelineView({
                   className={`screenshot-frame ${imageMode}`}
                   style={
                     {
-                      "--focus-scale": activeEntry.focusScale ?? 1,
+                      "--focus-scale": focusScale,
                       "--focus-origin": activeEntry.focusOrigin ?? "center top",
                       "--focus-height": activeEntry.focusHeight ?? "42rem"
                     } as CSSProperties

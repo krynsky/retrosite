@@ -1,6 +1,6 @@
 # Retrosite Handoff
 
-Updated: 2026-04-29
+Updated: 2026-05-01
 
 This is the working handoff for moving between Codex, Claude Code, and future GitHub work.
 
@@ -14,6 +14,9 @@ Retrosite is a local MVP for creating Wayback Machine visual timeline reports. I
 - A Playwright/Chrome screenshot worker.
 - A hand-curated static `krynsky.com` seed report.
 - Generated report draft, edit, export, publish, and share flows.
+- A retro home page design using `src/components/primitives/`, `src/styles/tokens*.css`, and `design_handoff/twitter.png`.
+- Request-only mode for hosted demos that collect timeline requests instead of running screenshot generation.
+- Static published timeline fallback under `krynsky-wayback/timelines/`.
 
 The project is not initialized as a git repository yet. The existing `.gitignore` already excludes `node_modules/`, `dist/`, `server/generated/`, logs, and local smoke-test screenshots.
 
@@ -23,9 +26,9 @@ When running locally:
 
 - Home/create report: `http://127.0.0.1:4317/`
 - About/process page: `http://127.0.0.1:4317/about`
-- Static seed report: `http://127.0.0.1:4317/reports/krynsky-com`
-- Generated edit page: `http://127.0.0.1:4317/reports/generated/:id`
-- Generated share page: `http://127.0.0.1:4317/reports/generated/:id/share`
+- Static seed report: `http://127.0.0.1:4317/timeline/krynsky.com`
+- Generated/latest timeline page: `http://127.0.0.1:4317/timeline/:target`
+- Generated version page: `http://127.0.0.1:4317/timeline/:target/v/:version`
 
 Vite dev mode also serves the client on `http://127.0.0.1:5173/`.
 
@@ -56,6 +59,12 @@ Run the worker separately:
 npm run worker
 ```
 
+Publish a local generated report as static public timeline assets:
+
+```powershell
+npm run publish:timeline -- <job-id-or-target>
+```
+
 Verify before handing back work:
 
 ```powershell
@@ -68,12 +77,18 @@ npm run build
 
 - `src/App.tsx` - routes, UI, generated report editor/share/static report views.
 - `src/styles.css` - all current visual styling.
+- `src/components/primitives/` - current retro design primitives.
+- `src/styles/tokens.css` and `src/styles/tokens.motel.css` - design tokens.
+- `design_handoff/twitter.png` - current home hero screenshot asset.
 - `src/data/krynskyTimeline.ts` - static seed report entries and hand-authored tech stack values.
 - `server/index.mjs` - Express API, job persistence, Wayback discovery, screenshot pipeline, exports.
 - `server/worker.mjs` - external worker entrypoint.
+- `api/config.js` and `api/requests.js` - Vercel request-only endpoints.
+- `scripts/publish-timeline.mjs` - promotes a local generated report into static public assets.
 - `server/*.test.mjs` - API and pipeline shape tests.
 - `docs/MVP_RUNBOOK.md` - runbook, hosting shape, env vars.
 - `docs/BACKLOG.md` - remaining product and engineering work.
+- `docs/PACKAGING.md` - GitHub/local, Pinokio, and Vercel deployment plan.
 - `krynsky-wayback/krynsky-wayback-timeline.md` - original static Markdown report.
 
 ## Preserved Decisions
@@ -84,6 +99,9 @@ npm run build
 - The generated share page should visually match the static report style, with the generated report action buttons kept.
 - The MVP does not require an LLM. Future LLM support can improve captions, era labels, and tech-stack annotation, but core discovery/rendering should work without it.
 - Generated report data is local filesystem state under `server/generated/` and is ignored by git.
+- The Vercel demo should run `RETROSITE_MODE=request-only`; report generation happens locally, then selected timelines are committed/uploaded as static `krynsky-wayback/timelines/` assets.
+- Admin/edit controls are no longer query-string gated. Local mode is editable by default; request-only mode is read-only and hides edit controls.
+- The broad `*.png` ignore rule was removed because design assets and published timeline screenshots need to be commit-eligible.
 
 ## What Works
 
@@ -100,6 +118,8 @@ npm run build
 - Export generated reports as Markdown and HTML.
 - Copy and view generated share pages.
 - Run API and worker in split mode for hosting.
+- Submit timeline requests in request-only mode through `POST /api/requests`.
+- Publish local timelines to static JSON/screenshot assets with `npm run publish:timeline`.
 
 ## Known Limitations
 
@@ -111,6 +131,8 @@ npm run build
 - Filesystem storage is fine for local MVP work but needs durable storage for hosting.
 - Email notification delivery is not implemented.
 - Generated report pages are functional, but they still need broader browser/mobile QA.
+- Vercel request-only submission currently supports GitHub Issues when `RETROSITE_REQUEST_REPO` and `GITHUB_TOKEN` are configured.
+- Pinokio has documentation scaffolding only; actual launcher scripts should be added after the GitHub repo URL is final.
 
 ## Current Local Test Jobs
 
@@ -128,7 +150,8 @@ The second job is useful for testing incomplete/needs-review UI.
 3. Add stronger review tools for weak captures and replacement choices.
 4. Add browser tests around create/edit/share/export flows.
 5. Initialize the GitHub repo and add a basic CI workflow.
-6. Decide on hosted persistence: durable volume first, database/object storage later.
+6. Configure Vercel request-only env vars and verify request issues are created.
+7. Add Pinokio launcher scripts after the GitHub repo URL is final.
 
 See `docs/BACKLOG.md` for the broader list.
 

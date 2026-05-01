@@ -3,6 +3,7 @@ import { Clipboard, FileText, Loader2, RefreshCw } from "lucide-react";
 import { krynskyTimeline } from "../data/krynskyTimeline";
 import type { ReportJob, ReportVersionSummary } from "../types";
 import { absoluteAppUrl, canCancelJob, canRetryJob, copyTextToClipboard, generatedSharePath } from "../helpers";
+import { useAppConfig } from "../useAppConfig";
 import { SiteNav } from "./SiteNav";
 import { JobProgress } from "./JobProgress";
 import { RunSummary } from "./RunSummary";
@@ -28,15 +29,12 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const [shareCopyMessage, setShareCopyMessage] = useState("");
   const [versions, setVersions] = useState<ReportVersionSummary[]>([]);
   const [rerunning, setRerunning] = useState(false);
+  const { config } = useAppConfig();
 
   const isRunning = job?.status === "queued" || job?.status === "running";
   const entries = job?.report?.curatedEntries ?? [];
   const hasEntries = entries.length > 0;
-
-  const isAdmin = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("admin") === "1";
-  }, []);
+  const isAdmin = config.canEditReports;
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +49,16 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
         const response = await fetch(`/api/reports/${encodeURIComponent(domain)}${versionParam}`);
         const payload = await response.json();
         if (!response.ok) {
+          if (version == null) {
+            const staticResponse = await fetch(`/timelines/${encodeURIComponent(domain)}/timeline.json`);
+            if (staticResponse.ok) {
+              const staticPayload = await staticResponse.json();
+              if (!cancelled) {
+                setJob(staticPayload);
+              }
+              return;
+            }
+          }
           throw new Error(payload.error ?? "Unable to load report.");
         }
         if (!cancelled) {
@@ -118,7 +126,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
       const response = await fetch(`/api/reports/${job.id}/retry`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to retry job.");
-      window.location.assign(`/report/${encodeURIComponent(payload.host ?? domain)}`);
+      window.location.assign(`/timeline/${encodeURIComponent(payload.host ?? domain)}`);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to retry job.");
       setActionSaving(false);
@@ -133,7 +141,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
       const response = await fetch(`/api/reports/${encodeURIComponent(domain)}/rerun`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to re-run report.");
-      window.location.assign(`/report/${encodeURIComponent(payload.host ?? domain)}`);
+      window.location.assign(`/timeline/${encodeURIComponent(payload.host ?? domain)}`);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to re-run report.");
       setRerunning(false);
@@ -160,7 +168,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const jobIsTerminal = job && !isRunning;
 
   return (
-    <main>
+    <main className="page paper-bg">
       <SiteNav />
       <section className="generated-report-page">
         {loading && (
@@ -174,7 +182,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
         {version != null && job && (
           <p className="warning-note">
             Viewing version {version}.{" "}
-            <a href={`/report/${encodeURIComponent(domain)}${isAdmin ? "?admin=1" : ""}`}>
+            <a href={`/timeline/${encodeURIComponent(domain)}`}>
               Go to latest version
             </a>
           </p>
@@ -248,8 +256,8 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
                   {versions.map((v) => {
                     const isCurrent = (job.version ?? 1) === v.version;
                     const versionUrl = v.version === versions[0].version
-                      ? `/report/${encodeURIComponent(domain)}?admin=1`
-                      : `/report/${encodeURIComponent(domain)}/v/${v.version}?admin=1`;
+                      ? `/timeline/${encodeURIComponent(domain)}`
+                      : `/timeline/${encodeURIComponent(domain)}/v/${v.version}`;
                     return (
                       <a
                         key={v.version}

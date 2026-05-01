@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Retrosite — Home (recreation)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="tokens.motel.css" />
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--font-mono); }
+
+  .page { width: 1000px; margin: 0 auto; padding: 22px 30px 30px; }
+
+  /* Top nav row */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding-bottom: 18px; border-bottom: 1.5px dashed var(--ink);
+  }
+  .brand { display:flex; align-items:center; gap: 16px; }
+  .brand-name { font-family: var(--font-display); font-weight: 800; font-size: 42px; letter-spacing: -0.025em; line-height: 1; }
+  .nav { display:flex; gap: 12px; }
+
+  /* Hero */
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding: 44px 0 28px; align-items: start; }
+  .headline {
+    font-family: var(--font-display); font-weight: 800;
+    font-size: 42px; line-height: 1.2; letter-spacing: -0.005em; margin: 0;
+  }
+  .headline .accent {
+    background-image: var(--marker-underline-bg);
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 100% 0.45em;
+    padding-bottom: 0.06em;
+  }
+
+  .domain-block { margin-top: 38px; display: flex; align-items: stretch; gap: 14px; }
+
+  .field {
+    position: relative; border: 2.5px solid var(--ink); background: var(--paper);
+    padding: 18px 18px 14px; min-width: 320px; flex: 1 1 320px;
+  }
+  .field .legend {
+    position:absolute; top:-10px; left: 12px;
+    background: var(--paper); padding: 0 8px;
+    font-family: var(--font-mono); font-weight: 800; font-size: 12px; letter-spacing: 0.12em;
+  }
+  .field input {
+    width:100%; border:0; background:transparent; outline:none;
+    font-family: var(--font-mono); font-size: 18px; color: var(--ink-faint);
+  }
+
+  /* Polaroid */
+  .photo-wrap { display:flex; justify-content:center; padding-top: 6px; }
+
+  /* Caption (handwriting under polaroid) */
+  .caption {
+    font-family: var(--font-hand); font-weight: 700; font-size: 44px;
+    color: var(--ink);
+    transform: rotate(-2deg);
+    text-align: center;
+    margin-top: 14px;
+  }
+  .caption span {
+    background-image: var(--marker-underline-pink-bg);
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 100% 0.34em;
+    padding-bottom: 0.08em;
+  }
+
+  /* Inline export feature under the form */
+  .feature {
+    display:flex; align-items:center; gap: 16px;
+    margin-top: 22px;
+  }
+  .feature.primary .label {
+    font-family: var(--font-display); font-weight: 800; font-size: 20px;
+    color: var(--ballpoint); line-height: 1.25;
+  }
+
+  /* Recent timelines */
+  .recent-section { margin-top: 48px; }
+  .recent-head {
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding-bottom: 10px; border-bottom: 1.5px dashed var(--ink);
+    margin-bottom: 22px;
+  }
+  .recent-title {
+    font-family: var(--font-display); font-weight: 800; font-size: 26px;
+    letter-spacing: -0.01em; margin: 0;
+  }
+  .recent-meta {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-mute);
+  }
+  .recent-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px;
+  }
+  .timeline-card {
+    background:#fbf6e6;
+    border: 1px solid #c9b88a;
+    box-shadow: var(--shadow-photo);
+    padding: 10px 10px 14px;
+    cursor: pointer;
+    transition: transform .12s ease;
+  }
+  .timeline-card:hover { transform: translateY(-2px); }
+  .timeline-thumb {
+    height: 150px; overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #cfe6f4;
+  }
+  .timeline-card .tc-domain {
+    font-family: var(--font-display); font-weight: 800; font-size: 20px;
+    letter-spacing: -0.015em; margin: 12px 4px 6px;
+    word-break: break-all; line-height: 1.15;
+  }
+  .timeline-card .tc-status {
+    font-family: var(--font-mono); font-weight: 800; font-size: 12px;
+    letter-spacing: .12em; color: var(--marker-pink);
+    margin: 0 4px 6px;
+  }
+  .timeline-card .tc-range {
+    font-family: var(--font-mono); font-weight: 700; font-size: 13px;
+    color: var(--ink); margin: 0 4px 4px;
+  }
+  .timeline-card .tc-time {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--ink-mute); margin: 0 4px;
+  }
+
+  /* Tiny pop sparks behind floppy */
+  .floppy-wrap { position: relative; display: inline-flex; }
+  .floppy-wrap::before, .floppy-wrap::after {
+    content: ''; position: absolute; pointer-events: none;
+  }
+  .floppy-wrap::before {
+    top: 6px; right: -10px; width: 14px; height: 2.5px;
+    background: var(--marker-blue); transform: rotate(-25deg);
+    box-shadow: -4px 8px 0 var(--marker-pink), -2px 16px 0 var(--marker-blue);
+  }
+
+  /* Sticker (DEMO) */
+  .demo-sticker {
+    display:inline-block;
+    background: var(--sticky);
+    border: 2px solid var(--ink);
+    padding: 4px 10px;
+    font-family: var(--font-mono); font-weight: 800; font-size: 14px;
+    letter-spacing: .1em; text-transform: uppercase;
+    transform: rotate(-7deg);
+    box-shadow: 2px 2px 0 0 var(--ink);
+  }
+
+  /* Logo (computer pixel mark) */
+  .logo-mark { width: 48px; height: 48px; image-rendering: pixelated; flex-shrink: 0; }
+
+  /* Sketch underline svg used in headline (separate so we can re-color via CSS var) */
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+</head>
+<body class="paper-bg">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useMemo } = React;
+
+/* ---------- Palettes (shared) ---------- */
+const PALETTES = {
+  arcade:      { label:'Arcade Cabinet · 8-bit',     paper:'#1a1530', paper2:'#241c45', primary:'#ffd23a', primaryDeep:'#d8a820', markerBlue:'#3ad6ff', markerPink:'#ff3a8c', ballpoint:'#7adcff', sticky:'#ff3a8c', stickyYellow:'#ffd23a' },
+  motel:       { label:'Roadside Motel · Neon',      paper:'#f0e3c8', paper2:'#e3d4b0', primary:'#ff5fa2', primaryDeep:'#d23a7e', markerBlue:'#1e8a9a', markerPink:'#ff5fa2', ballpoint:'#0a4a55', sticky:'#5ed3d8', stickyYellow:'#ffe488' },
+  zine:        { label:'Photocopy Zine · Risograph', paper:'#f2eddf', paper2:'#e3ddc8', primary:'#3a4cd6', primaryDeep:'#2530a8', markerBlue:'#3a4cd6', markerPink:'#e8482a', ballpoint:'#1a1f4a', sticky:'#ffb650', stickyYellow:'#fff088' },
+  postcard:    { label:'Linen Postcard · 1940',      paper:'#ecdfb8', paper2:'#dccd9e', primary:'#5a8d6a', primaryDeep:'#3d6a4a', markerBlue:'#3a4d8a', markerPink:'#c44a3c', ballpoint:'#2a3560', sticky:'#e8a878', stickyYellow:'#e6cd6a' },
+  bowling:     { label:'Bowling Alley · Splatter',   paper:'#1f2540', paper2:'#2a3052', primary:'#ff8a3a', primaryDeep:'#d8682a', markerBlue:'#5fbcff', markerPink:'#ff5fa8', ballpoint:'#a8d8ff', sticky:'#ffe06a', stickyYellow:'#a0e85a' },
+  craft:       { label:'Craft Paper · Earthen',      paper:'#d8c4a0', paper2:'#c8b48c', primary:'#7a8c3a', primaryDeep:'#5a6c20', markerBlue:'#3a4530', markerPink:'#a85838', ballpoint:'#2a2820', sticky:'#d89870', stickyYellow:'#c8b070' },
+  matchbook:   { label:'Matchbook · Tobacco',        paper:'#e8dcc0', paper2:'#dccda8', primary:'#c43830', primaryDeep:'#9a2820', markerBlue:'#5a3d20', markerPink:'#c43830', ballpoint:'#2e1f10', sticky:'#e8b070', stickyYellow:'#e0c870' },
+  blueprint:   { label:'Blueprint · Drafting',       paper:'#1f4a78', paper2:'#2a5a8a', primary:'#f4ecd8', primaryDeep:'#dccd9e', markerBlue:'#a8d4ff', markerPink:'#ff8a8a', ballpoint:'#d8e8f8', sticky:'#ffd870', stickyYellow:'#fff088' },
+  dustjacket:  { label:'Dust Jacket · 1962',         paper:'#e6d8b0', paper2:'#d8c898', primary:'#d87838', primaryDeep:'#a85820', markerBlue:'#2a4a3d', markerPink:'#a8382a', ballpoint:'#1a2e25', sticky:'#e8b870', stickyYellow:'#dcc878' },
+};
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "palette": "motel",
+  "primaryOverride": "",
+  "markerBlueOverride": "",
+  "markerPinkOverride": "",
+  "paperOverride": "",
+  "useOverrides": false
+}/*EDITMODE-END*/;
+
+function markerSvg(color, variant) {
+  const enc = encodeURIComponent(color);
+  if (variant === 'double') {
+    return (
+      `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 4 C 50 1, 110 9, 198 5' stroke='${enc}' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>"),` +
+      `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 8 C 60 4, 130 12, 198 7' stroke='${enc}' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>")`
+    );
+  }
+  return `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 7 C 40 2, 80 12, 130 6 S 195 4, 198 8' stroke='${enc}' stroke-width='3' stroke-linecap='round' fill='none'/></svg>")`;
+}
+
+function ApplyPalette({ tweaks }) {
+  const css = useMemo(() => {
+    const base = PALETTES[tweaks.palette] || PALETTES.arcade;
+    const primary    = (tweaks.useOverrides && tweaks.primaryOverride)    || base.primary;
+    const markerBlue = (tweaks.useOverrides && tweaks.markerBlueOverride) || base.markerBlue;
+    const markerPink = (tweaks.useOverrides && tweaks.markerPinkOverride) || base.markerPink;
+    const paper      = (tweaks.useOverrides && tweaks.paperOverride)      || base.paper;
+    return `
+      :root {
+        --paper: ${paper};
+        --paper-2: ${base.paper2};
+        --lime: ${primary};
+        --lime-deep: ${base.primaryDeep};
+        --marker-blue: ${markerBlue};
+        --marker-pink: ${markerPink};
+        --ballpoint: ${base.ballpoint};
+        --sticky: ${base.sticky};
+        --sticky-yellow: ${base.stickyYellow};
+        --marker-underline-bg: ${markerSvg(markerBlue, 'double')};
+        --marker-underline-pink-bg: ${markerSvg(markerPink)};
+      }
+      body, .paper-bg { background-color: ${paper}; }
+      .u-marker        { background-image: ${markerSvg(markerBlue)}; }
+      .u-marker-pink   { background-image: ${markerSvg(markerPink)}; }
+      .u-marker-double { background-image: ${markerSvg(markerBlue, 'double')}; }
+    `;
+  }, [tweaks]);
+  return <style>{css}</style>;
+}
+
+function PaletteSwatchRow({ palette }) {
+  const p = PALETTES[palette]; if (!p) return null;
+  const dots = [p.paper, p.primary, p.markerBlue, p.markerPink, p.ballpoint, p.sticky];
+  return (
+    <span style={{ display:'inline-flex', gap: 4 }}>
+      {dots.map((c, i) => <span key={i} style={{ width: 14, height: 14, background: c, border: '1.5px solid #161412' }} />)}
+    </span>
+  );
+}
+
+/* ---------- Logo (smiling computer pixel mark) ---------- */
+function ComputerLogo() {
+  // 16x16 — gray bezel with green smiley screen
+  const ink = '#161412';
+  const screen = '#bff44a'; // overridden visually by --lime via inline if you prefer
+  // Use simple two-tone ink + screen so it stays crisp regardless of palette
+  return (
+    <svg className="logo-mark" viewBox="0 0 16 16" shapeRendering="crispEdges">
+      {/* outline */}
+      <rect x="1" y="1" width="14" height="11" fill={ink} />
+      <rect x="2" y="2" width="12" height="9"  fill="#dcd6c2" />
+      {/* screen */}
+      <rect x="3" y="3" width="10" height="7"  fill={ink} />
+      <rect x="4" y="4" width="8"  height="5"  fill={screen} />
+      {/* eyes */}
+      <rect x="5" y="5" width="1" height="1" fill={ink} />
+      <rect x="10" y="5" width="1" height="1" fill={ink} />
+      {/* smile */}
+      <rect x="6" y="7" width="4" height="1" fill={ink} />
+      <rect x="5" y="6" width="1" height="1" fill={ink} />
+      <rect x="10" y="6" width="1" height="1" fill={ink} />
+      {/* base */}
+      <rect x="3" y="12" width="10" height="2" fill={ink} />
+      <rect x="4" y="13" width="8"  height="1" fill="#dcd6c2" />
+      <rect x="2" y="14" width="12" height="1" fill={ink} />
+    </svg>
+  );
+}
+
+/* ---------- Mock site inside polaroid (original — generic 2007 social) ---------- */
+function MockSite() {
+  return (
+    <div style={{
+      width:'100%', height:'100%',
+      background:'#cfe6f4', // pale blue page bg
+      fontFamily:'Verdana, Tahoma, sans-serif',
+      color:'#2b3a44',
+      display:'flex', flexDirection:'column',
+    }}>
+      {/* Header */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'8px 10px', background:'#cfe6f4', borderBottom:'1px solid #b0cad8',
+      }}>
+        <div style={{ fontFamily:'Georgia, serif', fontSize: 22, color:'#3aa6dc', fontStyle:'italic', fontWeight: 700 }}>chirper</div>
+        <div style={{ display:'flex', gap: 4, fontSize: 8, color:'#5a6b76' }}>
+          <span style={{ background:'#fff', border:'1px solid #b0cad8', padding:'1px 4px' }}>username</span>
+          <span style={{ background:'#fff', border:'1px solid #b0cad8', padding:'1px 4px' }}>password</span>
+          <span style={{ background:'#e6e6e6', border:'1px solid #aaa', padding:'1px 5px' }}>Log in</span>
+        </div>
+      </div>
+
+      {/* Body 2 cols */}
+      <div style={{ flex:1, display:'grid', gridTemplateColumns:'1.7fr 1fr', gap: 6, padding: 6, background:'#f3f8e1' }}>
+        {/* Left col */}
+        <div style={{ background:'#fff', border:'1px solid #b0cad8', padding: 6, display:'flex', flexDirection:'column', gap: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color:'#3aa6dc' }}>What are your friends doing?</div>
+          <div style={{ display:'flex', gap: 4 }}>
+            {['?','💬','🌐'].map((g, i) => (
+              <div key={i} style={{ flex:1, border:'1px solid #b0cad8', background:'#eaf5fb', padding: 4, textAlign:'center' }}>
+                <div style={{ fontSize: 16 }}>{g}</div>
+                <div style={{ fontSize: 6, color:'#5a6b76', marginTop: 2, lineHeight: 1.2 }}>tile copy</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 9, fontWeight: 700, color:'#3aa6dc', marginTop: 2 }}>Recent updates</div>
+          {[
+            ['user_one','Posting a quick update from the road…'],
+            ['user_two','Just finished the new patch.'],
+            ['user_three','Coffee #3 of the day.'],
+            ['user_four','Headed to the show tonight.'],
+            ['user_five','Anyone tried the new build?'],
+          ].map(([n, t], i) => (
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'18px 1fr', gap: 4, alignItems:'start', borderTop:'1px solid #e3eef4', paddingTop: 3 }}>
+              <div style={{ width: 18, height: 18, background:'#cfd6db' }} />
+              <div style={{ fontSize: 7.5, lineHeight: 1.25 }}>
+                <span style={{ color:'#3aa6dc', fontWeight: 700 }}>{n}</span>{' '}
+                <span style={{ color:'#2b3a44' }}>{t}</span>
+                <div style={{ color:'#7a8b96', fontSize: 6.5, marginTop: 1 }}>less than 5 seconds ago</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right col */}
+        <div style={{ display:'flex', flexDirection:'column', gap: 6 }}>
+          <div style={{ background:'#eaf5dc', border:'1px solid #c4d8a0', padding: 6 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color:'#5a7a2a' }}>Create Your Account</div>
+            <div style={{ background:'#a8d24a', color:'#fff', textAlign:'center', fontWeight: 700, fontSize: 10, padding:'2px 0', border:'1px solid #6e9020', marginTop: 4 }}>Join!</div>
+            <div style={{ fontSize: 6.5, color:'#5a6b76', marginTop: 4, lineHeight: 1.3 }}>Already using? Click here.</div>
+          </div>
+          <div style={{ background:'#fff', border:'1px solid #b0cad8', padding: 6 }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color:'#3aa6dc' }}>It’s flexible</div>
+            <div style={{ fontSize: 6.5, color:'#2b3a44', marginTop: 2, lineHeight: 1.3 }}>Stay connected in a variety of ways.</div>
+            <ul style={{ fontSize: 6.5, color:'#3aa6dc', margin: '3px 0 0 10px', padding: 0, lineHeight: 1.4 }}>
+              <li>Mobile</li><li>Messages</li><li>Desktop apps</li><li>Web</li>
+            </ul>
+          </div>
+          <div style={{ background:'#fff', border:'1px solid #b0cad8', padding: 6 }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color:'#3aa6dc' }}>Find people you know</div>
+            <div style={{ display:'flex', gap: 3, marginTop: 4 }}>
+              <div style={{ flex:1, height: 12, background:'#fff', border:'1px solid #b0cad8' }} />
+              <div style={{ background:'#e6e6e6', border:'1px solid #aaa', fontSize: 6.5, padding:'1px 4px' }}>Search</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 6, color:'#7a8b96', padding: '4px 8px', background:'#f3f8e1' }}>© 2007 chirper · About · Contact · Blog · API · Help · Terms · Privacy</div>
+    </div>
+  );
+}
+
+/* ---------- Polaroid card (no caption inside) ---------- */
+function PhotoCard({ children, rotate=-1.2, width=440 }) {
+  return (
+    <div style={{ position:'relative', display:'inline-block', transform:`rotate(${rotate}deg)` }}>
+      <div style={{
+        width, padding: 12, paddingBottom: 28,
+        background:'#fbf6e6',
+        border:'1px solid #c9b88a',
+        boxShadow:'0 1px 0 rgba(0,0,0,.05), 0 18px 32px -16px rgba(80,60,20,.35)',
+      }}>
+        <div style={{ height: width * 0.74, overflow:'hidden', border:'1px solid rgba(0,0,0,.06)' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Tweaks ---------- */
+function HomeTweaks({ tweaks, setTweak }) {
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection title="Accent palette">
+        <TweakSelect
+          label="Preset"
+          value={tweaks.palette}
+          onChange={(v) => setTweak('palette', v)}
+          options={Object.entries(PALETTES).map(([k, v]) => ({ value: k, label: v.label }))}
+        />
+        <div style={{ display:'flex', flexWrap:'wrap', gap: 6, marginTop: 8 }}>
+          {Object.entries(PALETTES).map(([k, p]) => (
+            <button key={k} onClick={() => setTweak('palette', k)} title={p.label}
+              style={{
+                display:'flex', alignItems:'center', gap: 6, padding:'4px 6px',
+                border: tweaks.palette === k ? '2px solid #161412' : '1px solid #999',
+                background: tweaks.palette === k ? '#fff' : '#f4f4f4',
+                cursor:'pointer', fontFamily:'inherit', fontSize: 11,
+              }}>
+              <PaletteSwatchRow palette={k} />
+            </button>
+          ))}
+        </div>
+      </TweakSection>
+
+      <TweakSection title="Custom overrides">
+        <TweakToggle label="Use custom colors" value={tweaks.useOverrides} onChange={(v) => setTweak('useOverrides', v)} />
+        {tweaks.useOverrides && (
+          <>
+            <TweakColor label="Primary"     value={tweaks.primaryOverride    || PALETTES[tweaks.palette].primary}    onChange={(v) => setTweak('primaryOverride', v)} />
+            <TweakColor label="Marker blue" value={tweaks.markerBlueOverride || PALETTES[tweaks.palette].markerBlue} onChange={(v) => setTweak('markerBlueOverride', v)} />
+            <TweakColor label="Marker pink" value={tweaks.markerPinkOverride || PALETTES[tweaks.palette].markerPink} onChange={(v) => setTweak('markerPinkOverride', v)} />
+            <TweakColor label="Paper"       value={tweaks.paperOverride      || PALETTES[tweaks.palette].paper}      onChange={(v) => setTweak('paperOverride', v)} />
+            <TweakButton onClick={() => setTweak({ primaryOverride:'', markerBlueOverride:'', markerPinkOverride:'', paperOverride:'' })}>Reset overrides</TweakButton>
+          </>
+        )}
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+/* ---------- Page ---------- */
+function Home() {
+  return (
+    <div className="page">
+      <header className="topbar">
+        <div className="brand">
+          <ComputerLogo />
+          <div className="brand-name">Retrosite</div>
+          <span className="demo-sticker">Demo</span>
+        </div>
+        <nav className="nav">
+          <button style={{
+            background:'var(--lime)', border:'2.5px solid var(--ink)',
+            padding:'10px 18px', fontFamily:'var(--font-mono)', fontWeight:800,
+            fontSize: 14, letterSpacing:'.02em', boxShadow:'3px 3px 0 0 var(--ink)',
+            cursor:'pointer',
+          }}>Timelines</button>
+          <button style={{
+            background:'var(--paper)', border:'2.5px solid var(--ink)',
+            padding:'10px 18px', fontFamily:'var(--font-mono)', fontWeight:800,
+            fontSize: 14, letterSpacing:'.02em', boxShadow:'3px 3px 0 0 var(--ink)',
+            cursor:'pointer', textTransform:'uppercase',
+          }}>About</button>
+          <button style={{
+            background:'var(--paper)', border:'2.5px solid var(--ink)',
+            padding:'10px 14px', fontFamily:'var(--font-mono)', fontWeight:800,
+            fontSize: 14, letterSpacing:'.02em', boxShadow:'3px 3px 0 0 var(--ink)',
+            cursor:'pointer', display:'inline-flex', alignItems:'center', gap: 8,
+          }}>
+            <span style={{
+              width: 18, height: 18, borderRadius: 99, background:'var(--ink)',
+              display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--paper)', fontSize: 11, fontWeight: 800,
+            }}>○</span>
+            GitHub
+          </button>
+        </nav>
+      </header>
+
+      <section className="hero">
+        <div>
+          <h1 className="headline">
+            Create a website<br/>
+            timeline using<br/>
+            <span className="accent">the Wayback</span><br/>
+            <span className="accent">Machine</span>
+          </h1>
+
+          <div className="domain-block">
+            <div className="field">
+              <span className="legend">DOMAIN OR PATH</span>
+              <input placeholder="example.com/path" />
+            </div>
+            <button style={{
+              background:'var(--lime)', border:'2.5px solid var(--ink)',
+              padding:'0 22px', fontFamily:'var(--font-mono)', fontWeight: 800,
+              fontSize: 18, letterSpacing:'.01em',
+              boxShadow:'3px 3px 0 0 var(--ink)', cursor:'pointer',
+              display:'inline-flex', alignItems:'center', gap: 12,
+            }}>
+              Create Timeline
+              <svg width="22" height="14" viewBox="0 0 22 14" shapeRendering="crispEdges">
+                <rect x="0"  y="6" width="14" height="2" fill="var(--ink)" />
+                <rect x="14" y="4" width="2" height="6" fill="var(--ink)" />
+                <rect x="16" y="2" width="2" height="10" fill="var(--ink)" />
+                <rect x="18" y="0" width="2" height="14" fill="var(--ink)" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="feature primary">
+            <div className="floppy-wrap">
+              <PixelIcon name="disk" size={56} accent="var(--marker-blue)" />
+            </div>
+            <div className="label">
+              Export timelines as<br/>
+              html and markdown
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="photo-wrap">
+            <PhotoCard width={420} rotate={-1.2}>
+              <MockSite />
+            </PhotoCard>
+          </div>
+          <div className="caption">
+            <span>2007 Vibes</span>
+          </div>
+        </div>
+      </section>
+
+      <RecentTimelines />
+    </div>
+  );
+}
+
+/* ---------- Recent timelines ---------- */
+function TimelineThumb({ kind }) {
+  // Three different period-web stylized thumbs to mirror the screenshot
+  if (kind === 'friendfeed-krynsky') {
+    return (
+      <div style={{ width:'100%', height:'100%', background:'#f8f7f2', display:'flex', flexDirection:'column', fontFamily:'Verdana, Tahoma, sans-serif', color:'#3a4452' }}>
+        <div style={{ padding:'5px 7px', borderBottom:'1px solid #d4dce2', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontFamily:'Georgia, serif', fontStyle:'italic', fontWeight:700, color:'#3aa6dc', fontSize:14 }}>friendfeed</span>
+          <span style={{ fontSize:6, color:'#7a8b96' }}>Home  Profile  Settings</span>
+        </div>
+        <div style={{ flex:1, display:'grid', gridTemplateColumns:'1.6fr 1fr', gap:4, padding:5 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            {[1,2,3,4,5,6,7].map(i => (
+              <div key={i} style={{ display:'grid', gridTemplateColumns:'12px 1fr', gap:3, alignItems:'start' }}>
+                <div style={{ width:12, height:12, background:'#cfd6db' }} />
+                <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                  <div style={{ height:3, background:'#3aa6dc', width: `${30+i*5}%` }} />
+                  <div style={{ height:2.5, background:'#cdd5db', width: `${60+i*3}%` }} />
+                  <div style={{ height:2.5, background:'#cdd5db', width: `${50+i*4}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+            <div style={{ background:'#fff8c4', border:'1px solid #d8c878', padding:3 }}>
+              {[80,60,75,55].map((w,i) => <div key={i} style={{ height:2.5, background:'#a8902a', width:`${w}%`, marginBottom:2 }} />)}
+            </div>
+            <div style={{ background:'#eaf5dc', border:'1px solid #c4d8a0', padding:3 }}>
+              {[70,50,65].map((w,i) => <div key={i} style={{ height:2.5, background:'#5a7a2a', width:`${w}%`, marginBottom:2 }} />)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (kind === 'krynsky') {
+    return (
+      <div style={{ width:'100%', height:'100%', background:'#000', position:'relative', display:'flex' }}>
+        <div style={{ width: 22, background:'#000', borderRight:'1px solid #2a2a2a', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <span style={{ writingMode:'vertical-rl', transform:'rotate(180deg)', fontFamily:'Georgia, serif', fontStyle:'italic', color:'#d23a3a', fontSize:11, fontWeight:700, letterSpacing:'.05em' }}>www.krynsky.com</span>
+        </div>
+        <div style={{ flex:1, padding:6, display:'flex', flexDirection:'column', gap:6 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+            <div style={{ background:'#e8d8a8', height:34, border:'1px solid #6a5530' }} />
+            <div style={{ background:'#1a1a1a', height:34, border:'1px solid #4a4a4a', display:'flex', alignItems:'center', justifyContent:'center', color:'#d8c878', fontSize:7, fontFamily:'Georgia, serif' }}>blogpost</div>
+          </div>
+          <div style={{ background:'#c44a3c', height:14, border:'1px solid #6a2820', display:'flex', alignItems:'center', paddingLeft:4, color:'#fff', fontSize:7, fontFamily:'Georgia, serif', fontStyle:'italic' }}>headline banner</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+            <div style={{ background:'#3a2a1a', height:30, border:'1px solid #6a5530' }} />
+            <div style={{ background:'#1a1a1a', height:30, border:'1px solid #4a4a4a', display:'flex', alignItems:'center', justifyContent:'center', color:'#d8a8a0', fontSize:7 }}>poster</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // friendfeed (text-heavy)
+  return (
+    <div style={{ width:'100%', height:'100%', background:'#f8f7f2', padding:'5px 7px', display:'flex', flexDirection:'column', gap:3, fontFamily:'Verdana, Tahoma, sans-serif' }}>
+      <span style={{ fontFamily:'Georgia, serif', fontStyle:'italic', fontWeight:700, color:'#3aa6dc', fontSize:13 }}>friendfeed</span>
+      <div style={{ borderTop:'1px solid #d4dce2', paddingTop:3, display:'flex', flexDirection:'column', gap:2.2 }}>
+        {[92,86,90,78,84,88,80,72,76,70,82,74].map((w,i) => (
+          <div key={i} style={{ height: 2.4, background: i % 5 === 0 ? '#3aa6dc' : '#c8d0d6', width: `${w}%` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecentTimelines() {
+  const cards = [
+    { kind:'friendfeed-krynsky', domain:'friendfeed.com/krynsky', range:'2007-2015', time:'Apr 30, 7:42 AM' },
+    { kind:'krynsky',            domain:'krynsky.com',            range:'1996-2026', time:'Apr 29, 4:24 PM' },
+    { kind:'friendfeed',         domain:'friendfeed.com',         range:'2007-2024', time:'Apr 29, 3:03 PM' },
+  ];
+  return (
+    <section className="recent-section">
+      <div className="recent-head">
+        <h2 className="recent-title">Recent Timelines</h2>
+        <span className="recent-meta">{cards.length} saved</span>
+      </div>
+      <div className="recent-grid">
+        {cards.map((c, i) => (
+          <div key={i} className="timeline-card">
+            <div className="timeline-thumb"><TimelineThumb kind={c.kind} /></div>
+            <div className="tc-domain">{c.domain}</div>
+            <div className="tc-status">COMPLETE <span style={{ color:'var(--ink)' }}>—</span> READY</div>
+            <div className="tc-range">{c.range}</div>
+            <div className="tc-time">{c.time}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  return (
+    <>
+      <ApplyPalette tweaks={tweaks} />
+      <HomeTweaks tweaks={tweaks} setTweak={setTweak} />
+      <Home />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

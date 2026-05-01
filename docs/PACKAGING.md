@@ -1,0 +1,117 @@
+# Retrosite Packaging Plan
+
+Retrosite is intended to ship in three practical forms:
+
+1. Local app from GitHub.
+2. Pinokio wrapper for one-click local installs.
+3. Vercel public demo that accepts timeline requests but does not run report generation.
+
+## Local GitHub App
+
+Local users run the full stack on their machine:
+
+```powershell
+npm install
+npm run dev
+```
+
+Local mode is the default:
+
+```text
+RETROSITE_MODE=local
+RETROSITE_RUNNER_MODE=inline
+```
+
+The local app can create reports, render screenshots, edit timelines, export Markdown/HTML, and publish static timeline JSON/assets.
+
+## Pinokio App
+
+Pinokio should be a thin wrapper around the normal local app. It should:
+
+- Clone the GitHub repo.
+- Run `npm install`.
+- Start `npm run dev` or `npm run start` after a build.
+- Open `http://127.0.0.1:5173/` for dev mode or `http://127.0.0.1:4317/` for production-style mode.
+- Keep `server/generated/` local and persistent.
+
+The main repo should remain runnable without Pinokio-specific assumptions. A Pinokio launcher can live in this repo under `pinokio/` or in a separate launcher repo if marketplace publishing requires it.
+
+## Vercel Demo
+
+The Vercel version should not run report generation. Screenshot rendering requires long-running Node/Chrome work and persistent disk, which is a poor fit for Vercel serverless functions.
+
+Use request-only mode:
+
+```text
+RETROSITE_MODE=request-only
+RETROSITE_REQUEST_SINK=github
+RETROSITE_REQUEST_REPO=owner/repo
+GITHUB_TOKEN=<token with issue write access>
+```
+
+In this mode:
+
+- `/api/config` tells the frontend to show request behavior.
+- `/api/requests` creates a GitHub issue for review.
+- `/api/reports` generation is disabled in the Express server.
+- Report edit/admin controls are hidden, and mutation endpoints are disabled.
+- Published timelines are static files under `krynsky-wayback/timelines/`.
+
+## Publishing A Locally Generated Timeline
+
+Generate and edit a report locally, then publish it to the static public folder:
+
+```powershell
+npm run publish:timeline -- <job-id-or-target>
+```
+
+Examples:
+
+```powershell
+npm run publish:timeline -- lifestreamblog.com
+npm run publish:timeline -- friendfeed.com/krynsky
+```
+
+The script writes:
+
+```text
+krynsky-wayback/timelines/<encoded-target>/timeline.json
+krynsky-wayback/timelines/<encoded-target>/screenshots/
+```
+
+Because Vite serves `krynsky-wayback/` as the public directory, the published timeline is available at:
+
+```text
+/timeline/<encoded-target>
+```
+
+The React report page first tries the live API. If the API report is unavailable, it falls back to:
+
+```text
+/timelines/<encoded-target>/timeline.json
+```
+
+## Git Ignore Policy
+
+Do not commit local generated jobs:
+
+```text
+server/generated/
+```
+
+Do commit intentional static assets:
+
+```text
+design_handoff/twitter.png
+krynsky-wayback/screenshots/
+krynsky-wayback/timelines/
+```
+
+## Recommended Release Order
+
+1. Commit the local app and docs.
+2. Verify `npm test`, `npm run check`, and `npm run build`.
+3. Create GitHub repo.
+4. Configure Vercel with request-only env vars.
+5. Publish selected timelines locally and commit the static `krynsky-wayback/timelines/` output.
+6. Add a Pinokio launcher once the GitHub repo URL is final.

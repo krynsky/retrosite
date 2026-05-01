@@ -231,7 +231,7 @@ export function entryQualityDetails(entry: DraftReportEntry) {
 }
 
 export function generatedSharePath(job: ReportJob | ReportJobSummary) {
-  return `/report/${encodeURIComponent(job.host)}/share`;
+  return `/timeline/${encodeURIComponent(job.host)}/share`;
 }
 
 export function absoluteAppUrl(pathname: string) {

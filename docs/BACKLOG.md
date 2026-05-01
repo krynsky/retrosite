@@ -38,7 +38,8 @@ This backlog is organized for the next agents working across Codex, Claude Code,
 - Add hosted Chrome/Chromium provisioning notes.
 - Add health checks for API, worker, and screenshot runtime.
 - Add GitHub Actions for `npm test`, `npm run check`, and `npm run build`.
-- Add `.env.example` once environment variables stabilize.
+- Add final Pinokio launcher scripts after the public GitHub repo URL is chosen.
+- Verify Vercel request-only deployment with GitHub Issue creation.
 
 ## Product
 
@@ -47,6 +48,7 @@ This backlog is organized for the next agents working across Codex, Claude Code,
 - Add billing or quota limits before public launch.
 - Add a report library/history page.
 - Add per-report settings for max screenshots, date range, homepage path, and URL variants.
+- Add a public request review workflow for the owner to triage submitted domains.
 - Add manual screenshot upload/replacement.
 - Add report duplication/forking.
 

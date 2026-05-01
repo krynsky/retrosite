@@ -8,7 +8,7 @@ The project began as a hand-curated `krynsky.com` archive report and is now a lo
 
 Current status: local MVP, not production hardened.
 
-Retrosite can discover captures, render screenshots, create generated timeline drafts, let a user edit/publish/share them, and export Markdown or HTML. It is still missing production concerns like auth, durable hosted storage, email notifications, billing, and automated tech-stack inference.
+Retrosite can discover captures, render screenshots, create generated timeline drafts, let a user edit/publish/share them, export Markdown or HTML, and publish edited timelines as static public assets. It is still missing production concerns like auth, durable hosted storage for automated hosted generation, email notifications, billing, and automated tech-stack inference.
 
 ## Features
 
@@ -21,6 +21,9 @@ Retrosite can discover captures, render screenshots, create generated timeline d
 - Publish/unpublish a generated draft.
 - Export Markdown and HTML.
 - Open a share page for generated reports.
+- Publish a local generated report into static `krynsky-wayback/timelines/` assets for a public demo.
+- Run in request-only mode so a hosted demo can collect timeline requests without running screenshot generation.
+- Hide edit/admin controls automatically in request-only mode; local mode is always editable.
 - View the hand-curated `krynsky.com` seed report.
 - Run the API and worker in one process locally or split them for hosting.
 
@@ -28,9 +31,10 @@ Retrosite can discover captures, render screenshots, create generated timeline d
 
 - `/` - create a report and view the featured seed report.
 - `/about` - process overview.
-- `/reports/krynsky-com` - static hand-curated seed report.
-- `/reports/generated/:id` - generated report job, editor, and draft view.
-- `/reports/generated/:id/share` - generated share/view page.
+- `/timeline` - saved timeline list.
+- `/timeline/krynsky.com` - static hand-curated seed report.
+- `/timeline/:target` - generated or published timeline view.
+- `/timeline/:target/v/:version` - generated timeline version view.
 
 ## Local Setup
 
@@ -59,6 +63,19 @@ The built server defaults to:
 http://127.0.0.1:4317/
 ```
 
+Publish a locally generated timeline into static public assets:
+
+```powershell
+npm run publish:timeline -- <job-id-or-target>
+```
+
+Run request-only mode for a hosted demo:
+
+```powershell
+$env:RETROSITE_MODE = "request-only"
+npm run start
+```
+
 ## Verification
 
 ```powershell
@@ -81,9 +98,11 @@ server/
 docs/
   MVP_RUNBOOK.md           Operations and hosting notes
   BACKLOG.md               Remaining work
+  PACKAGING.md             Local, Pinokio, and Vercel packaging notes
 krynsky-wayback/
   krynsky-wayback-timeline.md
   screenshots/             Original hand-curated report assets
+  timelines/               Optional published static generated timelines
 ```
 
 ## Generated Data

@@ -7,8 +7,9 @@ Retrosite is a local-first web app plus API/worker pipeline for turning public W
 The current MVP has three main surfaces:
 
 - A create-report home page at `/`.
-- A hand-curated seed report at `/reports/krynsky-com`.
-- Generated report edit/share pages at `/reports/generated/:id` and `/reports/generated/:id/share`.
+- A hand-curated seed report at `/timeline/krynsky.com`.
+- Generated and published timeline pages at `/timeline/:target`.
+- A request-only hosted demo mode for collecting timeline requests without running report generation.
 
 The seed `krynsky.com` report is static and intentionally protected from generated test jobs. Its tech stack values are hand-authored in `src/data/krynskyTimeline.ts`.
 
@@ -35,6 +36,8 @@ Generated reports are filesystem-backed local drafts. They can be edited, publis
 - Copy the generated share link.
 - Cancel queued/running jobs and retry failed/canceled jobs.
 - Run API and worker separately for hosted deployments.
+- Submit timeline requests in request-only mode.
+- Publish a local generated timeline into static public assets under `krynsky-wayback/timelines/`.
 
 ## What Is Intentionally Not Connected Yet
 
@@ -43,6 +46,7 @@ Generated reports are filesystem-backed local drafts. They can be edited, publis
 - Generated report storage is filesystem-based, not a database or object store.
 - Generated tech stack inference is not implemented. Generated entries currently start with `Needs render review` and can be edited manually.
 - Generated titles and notes are still generic and need better deterministic annotation.
+- Vercel-hosted report generation is intentionally not connected. Use Vercel for request intake and static published timelines, not screenshot rendering.
 
 ## Local Development
 
@@ -79,8 +83,18 @@ GET /api/health
 Expected shape:
 
 ```json
-{"ok":true,"runnerMode":"inline"}
+{"ok":true,"runnerMode":"inline","mode":"local"}
 ```
+
+Request-only demo mode:
+
+```powershell
+$env:RETROSITE_MODE = "request-only"
+npm run dev
+```
+
+In request-only mode the home form submits to `/api/requests`; `POST /api/reports` returns `403`.
+Report edit, delete, cancel, retry, and rerun endpoints also return `403` in request-only mode. Edit/admin controls are shown automatically in local mode and hidden automatically in request-only mode.
 
 ## Split API And Worker Mode
 
@@ -112,6 +126,11 @@ npm run worker
 |---|---:|---|
 | `PORT` | `4317` | API/static server port |
 | `RETROSITE_RUNNER_MODE` | `inline` | Set to `external` so only workers execute jobs |
+| `RETROSITE_MODE` | `local` | Set to `request-only` for public demo request intake |
+| `RETROSITE_REQUEST_QUEUE_ROOT` | `server/generated/requests` | Local filesystem queue for request-only Express mode |
+| `RETROSITE_REQUEST_SINK` | `local` | Public config hint; Vercel expects `github` |
+| `RETROSITE_REQUEST_REPO` | unset | GitHub `owner/repo` used by Vercel `/api/requests` |
+| `GITHUB_TOKEN` | unset | Token with GitHub issue write access for Vercel request intake |
 | `RETROSITE_DISABLE_RUNNER` | unset | Set to `1` to disable inline execution entirely |
 | `RETROSITE_GENERATED_ROOT` | `server/generated` | Persistent report/job/screenshot storage |
 | `RETROSITE_NOTIFICATION_OUTBOX` | `server/generated/notifications` | Local notification artifact path; email UI is currently deferred |
@@ -133,6 +152,8 @@ npm run worker
 ## API Routes
 
 - `GET /api/health`
+- `GET /api/config`
+- `POST /api/requests`
 - `GET /api/reports`
 - `POST /api/reports`
 - `GET /api/reports/:id`
@@ -146,7 +167,7 @@ npm run worker
 
 ## Hosting Shape
 
-Minimum MVP hosting needs:
+Fully automated report generation hosting needs:
 
 - Node.js runtime for the Express API.
 - A worker process with the same code and shared `RETROSITE_GENERATED_ROOT`.
@@ -160,6 +181,26 @@ Good next infrastructure step:
 - Add a small database for job metadata if multiple API instances or multiple workers are needed.
 - Add authentication before opening edit endpoints to the public internet.
 - Add a real queue if report volume grows beyond a single worker.
+
+Chosen public demo shape:
+
+- Vercel serves the React app and static published timelines.
+- Vercel `/api/config` returns request-only mode.
+- Vercel `/api/requests` creates GitHub Issues for requested domains.
+- The owner reviews requests, generates timelines locally, publishes static assets with `npm run publish:timeline`, and commits/uploads those assets.
+
+Publish a timeline:
+
+```powershell
+npm run publish:timeline -- <job-id-or-target>
+```
+
+Output:
+
+```text
+krynsky-wayback/timelines/<encoded-target>/timeline.json
+krynsky-wayback/timelines/<encoded-target>/screenshots/
+```
 
 ## GitHub Notes
 
@@ -193,9 +234,9 @@ For frontend layout changes, also inspect:
 
 - `/`
 - `/about`
-- `/reports/krynsky-com`
-- `/reports/generated/:id`
-- `/reports/generated/:id/share`
+- `/timeline/krynsky.com`
+- `/timeline/:target`
+- `/timeline/:target/v/:version`
 
 ## Known Good Smoke Targets
 

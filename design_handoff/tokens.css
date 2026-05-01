@@ -1,0 +1,140 @@
+/* =========================================================
+   Retrosite — Design tokens
+   "Digital scrapbook" — paper, ink, marker, sticker
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;500;700;800&family=Caveat:wght@400;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ---------- Color: paper & ink ---------- */
+  --paper:        #f4ecd8;   /* cream page */
+  --paper-2:      #ece2c8;   /* slightly warmer */
+  --paper-edge:   #d8caa3;   /* aged margin */
+  --paper-deep:   #c9b88a;   /* deeper aged */
+  --manila:       #e8d9b0;   /* card stock */
+
+  --ink:          #161412;   /* near-black, warm */
+  --ink-soft:     #2a251f;
+  --ink-mute:     #6b6354;
+  --ink-faint:    #9a917e;
+
+  /* ---------- Color: ballpoint & marker ---------- */
+  --ballpoint:    #1d4ed8;   /* blue pen */
+  --ballpoint-2:  #2456e6;
+  --marker-blue:  #2b6df0;   /* underline marker */
+  --marker-pink:  #ff5d8f;   /* highlighter pink */
+  --marker-red:   #d83a3a;   /* red pen */
+
+  /* ---------- Color: sticker / accent ---------- */
+  --lime:         #bff44a;   /* CTA neon lime */
+  --lime-deep:    #9ad431;
+  --sticky:       #ffb6c8;   /* sticky-note pink */
+  --sticky-yellow:#fff27a;
+  --tape:         rgba(220, 210, 175, 0.72);
+
+  /* ---------- Borders / strokes ---------- */
+  --hair:         1px;
+  --rule:         2px;
+  --bold:         3px;
+  --chunk:        4px;
+
+  --border:       var(--ink);
+  --border-soft:  #2a251f;
+
+  /* ---------- Radii ---------- */
+  --r-0: 0px;
+  --r-1: 2px;
+  --r-2: 6px;
+  --r-3: 10px;
+  --r-pill: 999px;
+
+  /* ---------- Shadows: hard ink + soft paper ---------- */
+  --shadow-stamp:   3px 3px 0 0 var(--ink);
+  --shadow-stamp-lg: 5px 5px 0 0 var(--ink);
+  --shadow-paper:   0 1px 0 rgba(0,0,0,.04), 0 8px 24px -10px rgba(80,60,20,.18);
+  --shadow-photo:   0 1px 0 rgba(0,0,0,.05), 0 14px 30px -14px rgba(80,60,20,.35);
+
+  /* ---------- Spacing ---------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* ---------- Type ---------- */
+  --font-display: 'JetBrains Mono', ui-monospace, monospace;
+  --font-mono:    'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+  --font-pixel:   'VT323', ui-monospace, monospace;
+  --font-hand:    'Caveat', 'Comic Sans MS', cursive;
+
+  /* type scale (display = monospace, tight) */
+  --t-d1: 64px;
+  --t-d2: 48px;
+  --t-d3: 36px;
+  --t-h1: 28px;
+  --t-h2: 22px;
+  --t-h3: 18px;
+  --t-body: 15px;
+  --t-small: 13px;
+  --t-micro: 11px;
+}
+
+/* =========================================================
+   Paper texture: subtle horizontal grain + flecks
+   ========================================================= */
+.paper-bg {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(rgba(120,90,30,0.05) 1px, transparent 1px),
+    radial-gradient(rgba(120,90,30,0.04) 1px, transparent 1px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.012) 0 1px, transparent 1px 3px);
+  background-size: 7px 7px, 17px 17px, 100% 3px;
+  background-position: 0 0, 3px 4px, 0 0;
+}
+
+.paper-edge {
+  background-color: var(--paper-2);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.018) 0 1px, transparent 1px 3px);
+}
+
+/* =========================================================
+   Type defaults
+   ========================================================= */
+body, .ds-root { font-family: var(--font-mono); color: var(--ink); }
+.t-display { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.01em; line-height: 1.05; }
+.t-mono    { font-family: var(--font-mono); }
+.t-pixel   { font-family: var(--font-pixel); font-size: 1.35em; line-height: 1; letter-spacing: 0.02em; }
+.t-hand    { font-family: var(--font-hand); font-weight: 600; }
+.t-caps    { text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* =========================================================
+   Marker underline (drawn with SVG as background)
+   ========================================================= */
+.u-marker {
+  position: relative;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 7 C 40 2, 80 12, 130 6 S 195 4, 198 8' stroke='%232b6df0' stroke-width='3' stroke-linecap='round' fill='none'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.4em;
+  padding-bottom: 0.18em;
+}
+.u-marker-pink {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 7 C 40 2, 80 12, 130 6 S 195 4, 198 8' stroke='%23ff5d8f' stroke-width='3' stroke-linecap='round' fill='none'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.4em;
+  padding-bottom: 0.18em;
+}
+.u-marker-double {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 4 C 50 1, 110 9, 198 5' stroke='%232b6df0' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 8 C 60 4, 130 12, 198 7' stroke='%232b6df0' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>");
+  background-repeat: no-repeat, no-repeat;
+  background-position: 0 92%, 0 105%;
+  background-size: 100% 0.32em, 100% 0.32em;
+  padding-bottom: 0.32em;
+}

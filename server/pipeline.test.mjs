@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeReportReadiness, reportCompletionPatch, selectSameYearAlternatives } from "./index.mjs";
+import {
+  candidateRenderBudget,
+  normalizeReportTarget,
+  normalizeReportReadiness,
+  pickCandidateEras,
+  reportCompletionPatch,
+  selectEntriesForCandidateRender,
+  selectSameYearAlternatives,
+  waybackQueryVariantsForTarget
+} from "./index.mjs";
 
 function capture(timestamp) {
   return {
@@ -10,6 +19,39 @@ function capture(timestamp) {
     replayUrl: `https://web.archive.org/web/${timestamp}if_/https://example.com/`
   };
 }
+
+test("report targets preserve a path inside a public domain", () => {
+  assert.deepEqual(normalizeReportTarget("http://friendfeed.com/krynsky"), {
+    domain: "friendfeed.com",
+    path: "/krynsky",
+    target: "friendfeed.com/krynsky"
+  });
+
+  assert.deepEqual(normalizeReportTarget("https://www.friendfeed.com/krynsky/"), {
+    domain: "friendfeed.com",
+    path: "/krynsky",
+    target: "friendfeed.com/krynsky"
+  });
+});
+
+test("path report targets query exact path variants with and without trailing slash", () => {
+  const variants = waybackQueryVariantsForTarget("http://friendfeed.com/krynsky");
+
+  assert.deepEqual(variants, [
+    "http://friendfeed.com/krynsky",
+    "https://friendfeed.com/krynsky",
+    "http://www.friendfeed.com/krynsky",
+    "https://www.friendfeed.com/krynsky",
+    "friendfeed.com/krynsky",
+    "www.friendfeed.com/krynsky",
+    "http://friendfeed.com/krynsky/",
+    "https://friendfeed.com/krynsky/",
+    "http://www.friendfeed.com/krynsky/",
+    "https://www.friendfeed.com/krynsky/",
+    "friendfeed.com/krynsky/",
+    "www.friendfeed.com/krynsky/"
+  ]);
+});
 
 test("same-year replacement candidates are sampled across the year", () => {
   const captures = [
@@ -34,6 +76,61 @@ test("same-year replacement candidates are sampled across the year", () => {
     alternatives.map((alternative) => alternative.timestamp),
     ["20200201000000", "20200501000000", "20200801000000", "20201201000000"]
   );
+});
+
+test("candidate era selection samples more than the last capture per year", () => {
+  const captures = [
+    capture("20200101000000"),
+    capture("20200201000000"),
+    capture("20200301000000"),
+    capture("20210101000000"),
+    capture("20210601000000"),
+    capture("20211201000000")
+  ];
+
+  const candidates = pickCandidateEras(captures);
+
+  assert.ok(candidates.length > 2);
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.timestamp),
+    [
+      "20200101000000",
+      "20200201000000",
+      "20200301000000",
+      "20210101000000",
+      "20210601000000",
+      "20211201000000"
+    ]
+  );
+});
+
+test("candidate render selection balances years before deeper same-year samples", () => {
+  const entries = [
+    { ...capture("20200101000000"), candidateRank: 0 },
+    { ...capture("20200201000000"), candidateRank: 1 },
+    { ...capture("20200301000000"), candidateRank: 2 },
+    { ...capture("20210101000000"), candidateRank: 0 },
+    { ...capture("20210201000000"), candidateRank: 1 },
+    { ...capture("20220101000000"), candidateRank: 0 }
+  ];
+
+  const selected = selectEntriesForCandidateRender(entries, 4);
+
+  assert.deepEqual(
+    selected.map((entry) => entry.timestamp),
+    ["20200101000000", "20210101000000", "20220101000000", "20200201000000"]
+  );
+});
+
+test("candidate render budget renders beyond the final screenshot limit", () => {
+  const job = {
+    screenshotLimit: 4,
+    report: {
+      entries: Array.from({ length: 20 }, (_, index) => capture(`2020${String(index + 1).padStart(2, "0")}01000000`))
+    }
+  };
+
+  assert.equal(candidateRenderBudget(job), 8);
 });
 
 test("thin generated drafts are marked incomplete instead of complete", () => {

@@ -2,7 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 function absoluteReportUrl(job, appOrigin) {
-  const reportPath = job.report?.generatedReportUrl ?? `/reports/generated/${job.id}`;
+  const canonicalReportPath = `/timeline/${encodeURIComponent(job.host)}`;
+  const reportPath = job.report?.generatedReportUrl?.startsWith("/timeline/")
+    ? job.report.generatedReportUrl
+    : canonicalReportPath;
   return new URL(reportPath, appOrigin).toString();
 }
 

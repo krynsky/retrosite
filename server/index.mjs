@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
+import { Buffer } from "node:buffer";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import sharp from "sharp";
@@ -18,12 +19,16 @@ let reportRunQueue = Promise.resolve();
 const currentFile = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(currentFile);
 const generatedRoot = process.env.RETROSITE_GENERATED_ROOT ?? path.join(__dirname, "generated");
+const requestQueueRoot = process.env.RETROSITE_REQUEST_QUEUE_ROOT ?? path.join(generatedRoot, "requests");
 const notificationOutboxRoot = process.env.RETROSITE_NOTIFICATION_OUTBOX ?? path.join(generatedRoot, "notifications");
 const clientDistRoot = path.join(__dirname, "..", "dist");
 const clientIndexFile = path.join(clientDistRoot, "index.html");
 const defaultScreenshotLimit = Number(process.env.RETROSITE_SCREENSHOT_LIMIT ?? 35);
 const maxScreenshotLimit = Number(process.env.RETROSITE_MAX_SCREENSHOT_LIMIT ?? 50);
-const replacementLimit = Number(process.env.RETROSITE_REPLACEMENT_LIMIT ?? 8);
+const candidateRenderMultiplier = Number(process.env.RETROSITE_CANDIDATE_RENDER_MULTIPLIER ?? 2);
+const candidateRenderCap = Number(process.env.RETROSITE_CANDIDATE_RENDER_LIMIT ?? 60);
+const perYearCandidateLimit = Number(process.env.RETROSITE_PER_YEAR_CANDIDATE_LIMIT ?? 4);
+const replacementLimit = Number(process.env.RETROSITE_REPLACEMENT_LIMIT ?? 3);
 const cdxTimeoutMs = Number(process.env.RETROSITE_CDX_TIMEOUT_MS ?? 45000);
 const cdxRetryCount = Number(process.env.RETROSITE_CDX_RETRIES ?? 2);
 const cdxConcurrency = Number(process.env.RETROSITE_CDX_CONCURRENCY ?? 3);
@@ -37,14 +42,71 @@ app.use(express.json());
 app.use("/generated", express.static(generatedRoot));
 app.use(express.static(clientDistRoot));
 
-function normalizeHomepage(input) {
+export function normalizeReportTarget(input) {
   const withScheme = /^https?:\/\//i.test(input) ? input : `https://${input}`;
   const url = new URL(withScheme);
-  const host = url.hostname.toLowerCase().replace(/^www\./, "");
-  if (!isPublicDomain(host)) {
-    throw new Error("Enter a public domain, such as example.com.");
+  const domain = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (!isPublicDomain(domain)) {
+    throw new Error("Enter a public domain or path, such as example.com/about.");
   }
-  return host;
+
+  let pathname = url.pathname || "/";
+  try {
+    pathname = decodeURI(pathname);
+  } catch {
+    // Keep the browser-normalized pathname if it contains malformed escapes.
+  }
+
+  pathname = pathname.replace(/\/{2,}/g, "/");
+  if (pathname.length > 1) {
+    pathname = pathname.replace(/\/+$/g, "");
+  }
+
+  if (!isValidReportPath(pathname)) {
+    throw new Error("Enter a public domain or path, such as example.com/about.");
+  }
+
+  const target = pathname === "/" ? domain : `${domain}${pathname}`;
+  return {
+    domain,
+    path: pathname,
+    target
+  };
+}
+
+function normalizeHomepage(input) {
+  return normalizeReportTarget(input).domain;
+}
+
+function isValidReportPath(pathname) {
+  if (!pathname.startsWith("/") || pathname.length > 2048) {
+    return false;
+  }
+
+  if (/[\u0000-\u001f\u007f]/.test(pathname)) {
+    return false;
+  }
+
+  return !pathname.split("/").some((segment) => segment === "." || segment === "..");
+}
+
+export function waybackQueryVariantsForTarget(reportTarget) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  const paths = target.path === "/" ? ["/"] : [target.path, `${target.path}/`];
+  const variants = [];
+
+  for (const pathVariant of paths) {
+    variants.push(
+      `http://${target.domain}${pathVariant}`,
+      `https://${target.domain}${pathVariant}`,
+      `http://www.${target.domain}${pathVariant}`,
+      `https://www.${target.domain}${pathVariant}`,
+      `${target.domain}${pathVariant}`,
+      `www.${target.domain}${pathVariant}`
+    );
+  }
+
+  return [...new Set(variants)];
 }
 
 function isPublicDomain(host) {
@@ -75,6 +137,36 @@ function normalizeNotifyEmail(input) {
   }
 
   return value;
+}
+
+function normalizeTimelineRequestBody(body) {
+  const target = String(body?.url ?? "").trim();
+  if (!target) {
+    throw new Error("Missing url in request body.");
+  }
+
+  const reportTarget = normalizeReportTarget(target);
+  const email = normalizeNotifyEmail(body?.email);
+  const notes = cleanEditableText(body?.notes, "", 1200);
+  return {
+    id: randomUUID(),
+    url: target,
+    target: reportTarget.target,
+    domain: reportTarget.domain,
+    path: reportTarget.path,
+    email,
+    notes,
+    status: "new",
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function writeTimelineRequest(requestRecord) {
+  await mkdir(requestQueueRoot, { recursive: true });
+  const filename = `${requestRecord.createdAt.replace(/[:.]/g, "-")}-${requestRecord.id}.json`;
+  const outputFile = path.join(requestQueueRoot, filename);
+  await writeFile(outputFile, JSON.stringify(requestRecord, null, 2), "utf8");
+  return outputFile;
 }
 
 function activeReportJobs() {
@@ -144,6 +236,33 @@ function sendCreateRateLimitResponse(response, retryAfterMs) {
 
 export function inlineRunnerEnabled() {
   return process.env.RETROSITE_DISABLE_RUNNER !== "1" && process.env.RETROSITE_RUNNER_MODE !== "external";
+}
+
+function retrositeMode() {
+  const mode = String(process.env.RETROSITE_MODE ?? "local").trim().toLowerCase();
+  return mode === "request-only" ? "request-only" : "local";
+}
+
+function publicConfig() {
+  const mode = retrositeMode();
+  return {
+    mode,
+    canGenerateReports: mode === "local",
+    canEditReports: mode === "local",
+    canSubmitRequests: mode === "request-only",
+    requestSink: process.env.RETROSITE_REQUEST_SINK ?? "local"
+  };
+}
+
+function rejectReportMutationInReadOnlyMode(response) {
+  if (retrositeMode() === "local") {
+    return false;
+  }
+
+  response.status(403).json({
+    error: "Report editing and generation are disabled in request-only mode."
+  });
+  return true;
 }
 
 function queuedReportJobs() {
@@ -244,6 +363,11 @@ function normalizeScreenshotLimit(value) {
   return Math.min(Math.max(requested, 1), Math.max(maxScreenshotLimit, 1));
 }
 
+function positiveInteger(value, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.max(1, Math.round(numericValue)) : fallback;
+}
+
 function chromeExecutablePath() {
   if (process.env.CHROME_PATH) {
     return process.env.CHROME_PATH;
@@ -297,16 +421,14 @@ async function scoreScreenshotVisuals(filePath) {
     const stdB = stats.channels[2]?.stdev ?? 0;
     const colorStdDev = (stdR + stdG + stdB) / 3;
 
-    let whitePixels = 0;
-    for (let i = 0; i < stats.channels.length && i < 3; i++) {
-      // approximate from stats: if mean is very high and stddev is low, most pixels are white
-    }
-    // Count near-white pixels from the downsampled greyscale buffer
     let brightPixels = 0;
+    let darkPixels = 0;
     for (let i = 0; i < data.length; i++) {
       if (data[i] > 240) brightPixels++;
+      if (data[i] < 16) darkPixels++;
     }
     const whiteRatio = brightPixels / totalPixels;
+    const darkRatio = darkPixels / totalPixels;
 
     const hist = new Uint32Array(256);
     for (let i = 0; i < data.length; i++) {
@@ -319,15 +441,16 @@ async function scoreScreenshotVisuals(filePath) {
       entropy -= p * Math.log2(p);
     }
 
-    return { colorStdDev, whiteRatio, entropy, score: computeVisualScore(colorStdDev, whiteRatio, entropy) };
+    return { colorStdDev, whiteRatio, darkRatio, entropy, score: computeVisualScore(colorStdDev, whiteRatio, darkRatio, entropy) };
   } catch {
-    return { colorStdDev: 0, whiteRatio: 1, entropy: 0, score: 0 };
+    return { colorStdDev: 0, whiteRatio: 1, darkRatio: 0, entropy: 0, score: 0 };
   }
 }
 
-function computeVisualScore(colorStdDev, whiteRatio, entropy) {
+function computeVisualScore(colorStdDev, whiteRatio, darkRatio, entropy) {
   const colorScore = Math.min(colorStdDev / 60, 1) * 30;
-  const whiteScore = Math.max(1 - whiteRatio, 0) * 30;
+  const blankRatio = Math.max(whiteRatio - 0.35, darkRatio - 0.8, 0);
+  const whiteScore = Math.max(1 - blankRatio, 0) * 30;
   const entropyScore = Math.min(entropy / 7, 1) * 40;
   return Math.round(colorScore + whiteScore + entropyScore);
 }
@@ -352,17 +475,43 @@ function classifyRender({ screenshot, diagnostics, visualScore }) {
   if (diagnostics.hasTextOnlySignal) {
     reasons.push("possible text-only fallback");
   }
+  if (
+    diagnostics.brokenImageCount >= 6 &&
+    diagnostics.loadedImageRatio < 0.5 &&
+    diagnostics.visibleContentCoverage < 0.35
+  ) {
+    reasons.push("many broken images");
+  }
+  if (diagnostics.visibleContentCoverage < 0.08 && diagnostics.bodyTextLength < 500) {
+    reasons.push("low visible content coverage");
+  }
+  if (diagnostics.visibleContentCoverage < 0.16 && diagnostics.backgroundImageCount === 0 && diagnostics.imageCount < 2) {
+    reasons.push("mostly empty viewport");
+  }
+  if (diagnostics.stylesheetCount === 0 && diagnostics.bodyTextLength > 600 && diagnostics.imageCount < 2) {
+    reasons.push("unstyled text-heavy page");
+  }
   if (diagnostics.bodyHeight < 220) {
     reasons.push("short rendered document");
   }
-  if (visualScore != null && visualScore < 25) {
+  if (visualScore != null && visualScore < 30) {
     reasons.push("low visual quality score");
   }
+
+  let qualityScore = visualScore ?? 0;
+  qualityScore += Math.min(diagnostics.visibleContentCoverage * 45, 18);
+  qualityScore += Math.min(diagnostics.loadedImageRatio * 8, 8);
+  qualityScore += Math.min(diagnostics.linkCount / 15, 1) * 4;
+  qualityScore -= reasons.length * 8;
+  if (diagnostics.hasWaybackErrorText || diagnostics.hasTextOnlySignal) qualityScore -= 30;
+  if (diagnostics.brokenImageCount >= 2) qualityScore -= Math.min(diagnostics.brokenImageCount * 3, 18);
+  qualityScore = Math.max(0, Math.min(100, Math.round(qualityScore)));
 
   return {
     ...screenshot,
     diagnostics,
     visualScore: visualScore ?? null,
+    qualityScore,
     classification: reasons.length > 0 ? "weak" : "usable",
     reasons
   };
@@ -374,10 +523,44 @@ async function collectRenderDiagnostics(page) {
     const body = document.body;
     const documentElement = document.documentElement;
     const elements = Array.from(document.querySelectorAll("*"));
+    const viewportArea = Math.max(window.innerWidth * window.innerHeight, 1);
     const backgroundImageCount = elements.filter((element) => {
       const backgroundImage = window.getComputedStyle(element).backgroundImage;
       return Boolean(backgroundImage && backgroundImage !== "none");
     }).length;
+    const visibleElements = elements.filter((element) => {
+      const style = window.getComputedStyle(element);
+      if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) {
+        return false;
+      }
+      if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
+        return false;
+      }
+      const tagName = element.tagName.toLowerCase();
+      if (tagName === "html" || tagName === "body") {
+        return false;
+      }
+      const hasMedia = tagName === "img" || tagName === "svg" || tagName === "canvas" || style.backgroundImage !== "none";
+      const hasText = Array.from(element.childNodes).some(
+        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim().length > 0
+      );
+      return hasMedia || hasText;
+    });
+    let visibleContentArea = 0;
+    for (const element of visibleElements) {
+      const rect = element.getBoundingClientRect();
+      const width = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
+      const height = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+      visibleContentArea += width * height;
+    }
+    const images = Array.from(document.querySelectorAll("img"));
+    const brokenImageCount = images.filter((img) => !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0).length;
+    const loadedImageCount = images.length - brokenImageCount;
+    const loadedImageRatio = images.length === 0 ? 1 : loadedImageCount / images.length;
     const hasWaybackErrorText = /wayback machine doesn't have|not archived|cannot be displayed|hmm\.|page cannot be found/i.test(
       text
     );
@@ -391,10 +574,15 @@ async function collectRenderDiagnostics(page) {
       finalUrl: window.location.href,
       bodyTextLength: text.trim().length,
       linkCount: document.querySelectorAll("a").length,
-      imageCount: document.querySelectorAll("img").length,
+      imageCount: images.length,
+      loadedImageCount,
+      brokenImageCount,
+      loadedImageRatio,
       stylesheetCount: document.querySelectorAll("link[rel~='stylesheet'], style").length,
       scriptCount: document.querySelectorAll("script").length,
       backgroundImageCount,
+      visibleElementCount: visibleElements.length,
+      visibleContentCoverage: Math.min(1, visibleContentArea / viewportArea),
       bodyHeight: Math.max(body?.scrollHeight ?? 0, documentElement?.scrollHeight ?? 0),
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -496,7 +684,61 @@ function summarizeCaptures(captures) {
   return [...byYear.values()].sort((a, b) => a.year.localeCompare(b.year));
 }
 
-function pickCandidateEras(captures) {
+function candidateFromCapture(capture, reason, rank) {
+  return {
+    timestamp: capture.timestamp,
+    date: timestampDate(capture.timestamp),
+    original: capture.original,
+    replayUrl: waybackReplayUrl(capture.timestamp, capture.original),
+    reason,
+    rank
+  };
+}
+
+function addCandidateCapture(target, capture, reason) {
+  const key = `${capture.timestamp}:${capture.original}`;
+  if (!target.has(key)) {
+    target.set(key, { capture, reason });
+  }
+}
+
+function selectYearCandidateCaptures(yearCaptures) {
+  const sorted = yearCaptures.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const limit = positiveInteger(perYearCandidateLimit, 6);
+  const selected = new Map();
+
+  if (sorted.length === 0) {
+    return [];
+  }
+
+  addCandidateCapture(selected, sorted[0], "Earliest homepage capture for this year");
+  addCandidateCapture(selected, sorted.at(-1), "Latest homepage capture for this year");
+
+  const middleIndex = Math.floor(sorted.length / 2);
+  addCandidateCapture(selected, sorted[middleIndex], "Middle homepage capture for this year");
+
+  for (const capture of spreadSample(sorted, limit)) {
+    addCandidateCapture(selected, capture, "Spread-sampled homepage capture for this year");
+  }
+
+  let previousDigest = sorted[0]?.digest;
+  for (const capture of sorted) {
+    if (selected.size >= limit) {
+      break;
+    }
+    if (capture.digest && previousDigest && capture.digest !== previousDigest) {
+      addCandidateCapture(selected, capture, "Digest-change homepage capture for this year");
+    }
+    previousDigest = capture.digest;
+  }
+
+  return [...selected.values()]
+    .map(({ capture, reason }) => ({ capture, reason }))
+    .sort((a, b) => a.capture.timestamp.localeCompare(b.capture.timestamp))
+    .slice(0, limit);
+}
+
+export function pickCandidateEras(captures) {
   const byYear = new Map();
   for (const capture of captures) {
     const year = capture.timestamp.slice(0, 4);
@@ -505,29 +747,19 @@ function pickCandidateEras(captures) {
   }
 
   const candidates = [];
-  for (const [, yearCaptures] of byYear) {
-    const pick = yearCaptures[yearCaptures.length - 1];
-    candidates.push({
-      timestamp: pick.timestamp,
-      date: timestampDate(pick.timestamp),
-      original: pick.original,
-      replayUrl: waybackReplayUrl(pick.timestamp, pick.original),
-      reason: "Last homepage capture for this year"
-    });
+  for (const [, yearCaptures] of [...byYear.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const yearCandidates = selectYearCandidateCaptures(yearCaptures);
+    for (const [rank, { capture, reason }] of yearCandidates.entries()) {
+      candidates.push(candidateFromCapture(capture, reason, rank));
+    }
   }
   return candidates;
 }
 
 async function discoverCaptures(target) {
-  const host = normalizeHomepage(target);
-  const variants = [
-    `http://${host}/`,
-    `https://${host}/`,
-    `http://www.${host}/`,
-    `https://www.${host}/`,
-    `${host}/`,
-    `www.${host}/`
-  ];
+  const reportTarget = normalizeReportTarget(target);
+  const host = reportTarget.target;
+  const variants = waybackQueryVariantsForTarget(reportTarget);
 
   const variantResults = await mapWithConcurrency(variants, cdxConcurrency, queryCdx);
   const successes = variantResults.filter((result) => result.status === "ok");
@@ -594,7 +826,8 @@ function createDraftReport(discovery) {
       screenshotError: null,
       screenshotQuality: null,
       replacementOf: null,
-      replacementAttempts: []
+      replacementAttempts: [],
+      candidateRank: candidate.rank ?? 0
     }))
   };
 }
@@ -638,6 +871,62 @@ function deduplicateByEra(entries) {
   return result;
 }
 
+function entryQualityScore(entry) {
+  if (entry.screenshotStatus !== "rendered" || !entry.screenshotQuality) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const quality = entry.screenshotQuality;
+  const diagnostics = quality.diagnostics ?? {};
+  const reasons = quality.reasons ?? [];
+  let score = quality.qualityScore ?? quality.visualScore ?? 0;
+
+  if (quality.classification === "usable") {
+    score += 12;
+  } else {
+    score -= 12;
+  }
+  score -= reasons.length * 6;
+  if (reasons.some((reason) => /Wayback error|text-only|unstyled|small screenshot dimensions|short rendered/i.test(reason))) {
+    score -= 35;
+  }
+  if (reasons.some((reason) => /many broken images|mostly empty|low visible content/i.test(reason))) {
+    score -= 20;
+  }
+  if (diagnostics.visibleContentCoverage != null) {
+    score += Math.min(diagnostics.visibleContentCoverage * 30, 14);
+  }
+  if (diagnostics.loadedImageRatio != null && diagnostics.imageCount > 0) {
+    score += Math.min(diagnostics.loadedImageRatio * 10, 10);
+  }
+  if (entry.replacementOf) {
+    score += 3;
+  }
+
+  return Math.round(score);
+}
+
+function selectableEntry(entry) {
+  const quality = entry.screenshotQuality;
+  if (entry.screenshotStatus !== "rendered" || !quality) {
+    return false;
+  }
+
+  const reasons = quality.reasons ?? [];
+  const fatalReason = reasons.some((reason) =>
+    /Wayback error|text-only|unstyled|small screenshot dimensions|short rendered|mostly empty viewport/i.test(reason)
+  );
+  if (fatalReason) {
+    return false;
+  }
+
+  if (quality.classification === "usable") {
+    return true;
+  }
+
+  return entryQualityScore(entry) >= 45;
+}
+
 function bestEntryPerYear(entries) {
   const byYear = new Map();
   for (const entry of entries) {
@@ -649,11 +938,11 @@ function bestEntryPerYear(entries) {
     }
     const entryUsable = entry.screenshotQuality?.classification === "usable";
     const existingUsable = existing.screenshotQuality?.classification === "usable";
-    const entryScore = entry.screenshotQuality?.visualScore ?? 0;
-    const existingScore = existing.screenshotQuality?.visualScore ?? 0;
+    const entryScore = entryQualityScore(entry);
+    const existingScore = entryQualityScore(existing);
     if (entryUsable && !existingUsable) {
       byYear.set(year, entry);
-    } else if (entryUsable && existingUsable && entryScore > existingScore) {
+    } else if (entryUsable === existingUsable && entryScore > existingScore) {
       byYear.set(year, entry);
     }
   }
@@ -662,17 +951,19 @@ function bestEntryPerYear(entries) {
 
 function curateDraftReport(job) {
   const renderedEntries = job.report.entries.filter((entry) => entry.screenshotStatus === "rendered");
-  const selectedEntries = bestEntryPerYear(renderedEntries);
+  const selectableEntries = renderedEntries.filter(selectableEntry);
+  const selectedEntries = bestEntryPerYear(selectableEntries);
 
   const sorted = selectedEntries.slice().sort((a, b) => a.date.localeCompare(b.date));
   const deduplicated = deduplicateByEra(sorted);
 
   job.report.curatedEntries = deduplicated.map(curatedEntryCopy);
-  job.report.generatedReportUrl = `/reports/generated/${job.id}`;
-  job.report.generatedShareUrl = `/reports/generated/${job.id}/share`;
+  job.report.generatedReportUrl = `/timeline/${encodeURIComponent(job.host)}`;
+  job.report.generatedShareUrl = `/timeline/${encodeURIComponent(job.host)}/share`;
   job.report.publicationStatus = job.report.publicationStatus ?? "draft";
   job.report.publishedAt = job.report.publishedAt ?? null;
   job.report.stats.renderedCount = renderedEntries.length;
+  job.report.stats.usableRenderCount = selectableEntries.length;
   job.report.stats.selectedCount = job.report.curatedEntries.length;
 }
 
@@ -690,7 +981,8 @@ function captureToReportEntry(capture, reason, replacementOf = null) {
     screenshotError: null,
     screenshotQuality: null,
     replacementOf,
-    replacementAttempts: []
+    replacementAttempts: [],
+    candidateRank: 0
   };
 }
 
@@ -728,6 +1020,68 @@ export function selectSameYearAlternatives(captures, entry, limit = replacementL
 
 function sameYearAlternatives(job, entry) {
   return selectSameYearAlternatives(job.discovery.captures, entry, replacementLimit);
+}
+
+export function candidateRenderBudget(job) {
+  const finalLimit = normalizeScreenshotLimit(job.screenshotLimit);
+  const multiplier = Math.max(1, Number.isFinite(candidateRenderMultiplier) ? candidateRenderMultiplier : 3);
+  const cap = positiveInteger(candidateRenderCap, 90);
+  const requested = Math.max(finalLimit, Math.ceil(finalLimit * multiplier));
+  const entryCount = job.report?.entries?.length ?? requested;
+  return Math.min(requested, cap, entryCount);
+}
+
+export function selectEntriesForCandidateRender(entries, limit) {
+  const byYear = new Map();
+  for (const entry of entries) {
+    const year = entry.date.slice(0, 4);
+    if (!byYear.has(year)) {
+      byYear.set(year, []);
+    }
+    byYear.get(year).push(entry);
+  }
+
+  const yearBuckets = [...byYear.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, yearEntries]) =>
+      yearEntries.slice().sort((a, b) => {
+        const rankDelta = (a.candidateRank ?? 0) - (b.candidateRank ?? 0);
+        return rankDelta === 0 ? a.timestamp.localeCompare(b.timestamp) : rankDelta;
+      })
+    );
+
+  const selected = [];
+  let depth = 0;
+  while (selected.length < limit) {
+    let added = false;
+    for (const bucket of yearBuckets) {
+      const entry = bucket[depth];
+      if (!entry) {
+        continue;
+      }
+      selected.push(entry);
+      added = true;
+      if (selected.length >= limit) {
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+    depth += 1;
+  }
+
+  return selected;
+}
+
+function shouldRepairRenderedEntry(entry) {
+  if (entry.screenshotStatus === "failed") {
+    return true;
+  }
+  if (entry.screenshotStatus !== "rendered" || !entry.screenshotQuality) {
+    return false;
+  }
+  return entry.screenshotQuality.classification === "weak" || entryQualityScore(entry) < 48;
 }
 
 function minimumUsableScreenshotCount(job) {
@@ -839,8 +1193,9 @@ async function renderReportScreenshots(job) {
       viewport: { width: 1440, height: 1100 }
     });
 
-    const jobScreenshotLimit = normalizeScreenshotLimit(job.screenshotLimit);
-    const entriesToRender = job.report.entries.slice(0, jobScreenshotLimit);
+    const renderBudget = candidateRenderBudget(job);
+    const entriesToRender = selectEntriesForCandidateRender(job.report.entries, renderBudget);
+    const renderedKeys = new Set(entriesToRender.map(entryKey));
     for (const [index, entry] of entriesToRender.entries()) {
       if (canceledReportJob(job)) {
         return;
@@ -848,7 +1203,7 @@ async function renderReportScreenshots(job) {
 
       updateJob(job, {
         stage: "rendering",
-        progress: Math.round(62 + (index / entriesToRender.length) * 24),
+        progress: Math.round(62 + (index / Math.max(entriesToRender.length, 1)) * 24),
         message: `Rendering screenshot ${index + 1} of ${entriesToRender.length}: ${entry.date}.`
       });
 
@@ -865,8 +1220,9 @@ async function renderReportScreenshots(job) {
         return;
       }
 
-      if (entry.screenshotStatus === "failed" || entry.screenshotQuality?.classification === "weak") {
-        const alternatives = sameYearAlternatives(job, entry);
+      if (shouldRepairRenderedEntry(entry)) {
+        const existingKeys = new Set(job.report.entries.map(entryKey));
+        const alternatives = sameYearAlternatives(job, entry).filter((capture) => !existingKeys.has(`${capture.timestamp}:${capture.original}`));
         for (const [replacementIndex, capture] of alternatives.entries()) {
           if (canceledReportJob(job)) {
             return;
@@ -885,7 +1241,7 @@ async function renderReportScreenshots(job) {
 
           updateJob(job, {
             stage: "repairing",
-            progress: Math.round(86 + (index / entriesToRender.length) * 6),
+            progress: Math.round(86 + (index / Math.max(entriesToRender.length, 1)) * 6),
             message: `Trying replacement ${replacementIndex + 1} for ${entry.date.slice(0, 4)}.`
           });
 
@@ -904,16 +1260,19 @@ async function renderReportScreenshots(job) {
 
           if (replacement.screenshotStatus === "rendered") {
             job.report.entries.push(replacement);
+            existingKeys.add(entryKey(replacement));
           }
-          if (replacement.screenshotQuality?.classification === "usable") {
+          if (!shouldRepairRenderedEntry(replacement)) {
             break;
           }
         }
       }
     }
 
-    for (const entry of job.report.entries.slice(jobScreenshotLimit)) {
-      entry.screenshotStatus = "queued";
+    for (const entry of job.report.entries) {
+      if (entry.screenshotStatus === "pending" && !renderedKeys.has(entryKey(entry))) {
+        entry.screenshotStatus = "queued";
+      }
     }
   } finally {
     await browser.close();
@@ -997,8 +1356,8 @@ function publicJobSummary(job) {
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: `/report/${encodeURIComponent(job.host)}`,
-    generatedShareUrl: `/report/${encodeURIComponent(job.host)}/share`,
+    generatedReportUrl: `/timeline/${encodeURIComponent(job.host)}`,
+    generatedShareUrl: `/timeline/${encodeURIComponent(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error,
     thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
@@ -1018,6 +1377,15 @@ function htmlEscape(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function inlineJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 function cleanEditableText(value, fallback, maxLength) {
@@ -1040,7 +1408,108 @@ function absoluteLocalUrl(request, pathname) {
   return `${request.protocol}://${request.get("host")}${pathname}`;
 }
 
-function buildReportMarkdown(job, request) {
+function reportExportBaseName(job) {
+  return job.host
+    .replace(/[^a-z0-9.-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "retrosite-report";
+}
+
+function exportSafeSegment(value, fallback) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || fallback;
+}
+
+function generatedAssetFilePath(publicPath) {
+  if (!publicPath) {
+    return null;
+  }
+
+  const url = new URL(publicPath, "http://retrosite.local");
+  let pathname = url.pathname;
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  if (!pathname.startsWith("/generated/")) {
+    return null;
+  }
+
+  const segments = pathname
+    .slice("/generated/".length)
+    .split("/")
+    .filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    return null;
+  }
+
+  return path.join(generatedRoot, ...segments);
+}
+
+function screenshotExportName(entry, index, usedNames) {
+  const sourcePath = entry.screenshotUrl ? new URL(entry.screenshotUrl, "http://retrosite.local").pathname : "";
+  const extension = path.extname(sourcePath).toLowerCase() || ".png";
+  const safeExtension = /^\.[a-z0-9]{1,8}$/i.test(extension) ? extension : ".png";
+  const baseName = `${String(index + 1).padStart(2, "0")}-${entry.date}-${exportSafeSegment(entry.title, "screenshot")}`;
+  let name = `${baseName}${safeExtension}`;
+  let suffix = 2;
+  while (usedNames.has(name)) {
+    name = `${baseName}-${suffix}${safeExtension}`;
+    suffix += 1;
+  }
+  usedNames.add(name);
+  return name;
+}
+
+async function collectExportScreenshotAssets(entries) {
+  const files = [];
+  const screenshotPathsByEntry = new Map();
+  const usedNames = new Set();
+
+  for (const [index, entry] of entries.entries()) {
+    const localPath = generatedAssetFilePath(entry.screenshotUrl);
+    if (!localPath) {
+      continue;
+    }
+
+    try {
+      const data = await readFile(localPath);
+      const zipPath = `screenshots/${screenshotExportName(entry, index, usedNames)}`;
+      files.push({ path: zipPath, data });
+      screenshotPathsByEntry.set(entryKey(entry), zipPath);
+    } catch {
+      // Keep the export usable even if a previously-rendered screenshot file was moved or deleted.
+    }
+  }
+
+  return { files, screenshotPathsByEntry };
+}
+
+function reportCaveats(entry) {
+  const caveats = [];
+  if (entry.screenshotQuality?.reasons?.length) {
+    caveats.push(`Flagged: ${entry.screenshotQuality.reasons.join(", ")}.`);
+  }
+  if (entry.replacementOf) {
+    caveats.push(`Replacement capture for ${entry.replacementOf}.`);
+  }
+  if (entry.replacementAttempts?.length) {
+    caveats.push(
+      `${entry.replacementAttempts.length} same-year replacement attempt${entry.replacementAttempts.length === 1 ? "" : "s"} checked.`
+    );
+  }
+  if (entry.screenshotError) {
+    caveats.push(`Render error: ${entry.screenshotError}`);
+  }
+  return caveats;
+}
+
+function buildReportMarkdown(job, screenshotPathsByEntry = new Map()) {
   const report = job.report;
   const entries = report?.curatedEntries ?? [];
   if (!report || entries.length === 0) {
@@ -1068,29 +1537,24 @@ function buildReportMarkdown(job, request) {
     lines.push(`> ${job.discovery.warning}`, "");
   }
 
-  lines.push("| Date | Title | Tech stack | Screenshot | Source | Notes |", "|---|---|---|---|---|---|");
+  lines.push("## Timeline", "");
   for (const entry of entries) {
-    const screenshotUrl = absoluteLocalUrl(request, entry.screenshotUrl);
-    const screenshotLink = screenshotUrl ? `[Screenshot](${screenshotUrl})` : "";
-    const caveats = [];
-    if (entry.screenshotQuality?.reasons?.length) {
-      caveats.push(`Flagged: ${entry.screenshotQuality.reasons.join(", ")}.`);
-    }
-    if (entry.replacementOf) {
-      caveats.push(`Replacement capture for ${entry.replacementOf}.`);
-    }
-    if (entry.replacementAttempts?.length) {
-      caveats.push(
-        `${entry.replacementAttempts.length} same-year replacement attempt${entry.replacementAttempts.length === 1 ? "" : "s"} checked.`
-      );
-    }
-    if (entry.screenshotError) {
-      caveats.push(`Render error: ${entry.screenshotError}`);
-    }
-    const qualityNote = caveats.length > 0 ? ` ${caveats.join(" ")}` : "";
+    const screenshotPath = screenshotPathsByEntry.get(entryKey(entry));
+    const caveats = reportCaveats(entry);
     lines.push(
-      `| ${markdownEscape(entry.date)} | ${markdownEscape(entry.title)} | ${markdownEscape(entry.techStack)} | ${screenshotLink} | [Wayback](${entry.source}) | ${markdownEscape(`${entry.notes}${qualityNote}`)} |`
+      `### ${entry.date}: ${entry.title}`,
+      "",
+      screenshotPath ? `![${entry.date} ${entry.title}](${screenshotPath})` : "_No exported screenshot file was available for this entry._",
+      "",
+      `- Tech stack: ${entry.techStack}`,
+      `- Source: [Wayback capture](${entry.source})`,
+      "",
+      entry.notes,
+      ""
     );
+    if (caveats.length > 0) {
+      lines.push("Review notes:", "", ...caveats.map((caveat) => `- ${caveat}`), "");
+    }
   }
 
   lines.push("", "## Wayback Query Status", "");
@@ -1105,120 +1569,353 @@ function buildReportMarkdown(job, request) {
   return `${lines.join("\n")}\n`;
 }
 
-function buildReportHtml(job, request) {
+function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
   const report = job.report;
   const entries = report?.curatedEntries ?? [];
   if (!report || entries.length === 0) {
     return "";
   }
 
-  const stats = [
-    ["Selected screenshots", entries.length],
-    ["Archive range", report.stats.range],
-    ["Captures found", report.stats.captureCount],
-    ["Screenshots rendered", report.stats.renderedCount ?? 0]
-  ];
-
-  const entriesHtml = entries
-    .map((entry) => {
-      const screenshotUrl = absoluteLocalUrl(request, entry.screenshotUrl);
-      const caveats = [];
-      if (entry.screenshotQuality?.reasons?.length) {
-        caveats.push(`Flagged: ${entry.screenshotQuality.reasons.join(", ")}.`);
-      }
-      if (entry.replacementOf) {
-        caveats.push(`Replacement capture for ${entry.replacementOf}.`);
-      }
-      if (entry.replacementAttempts?.length) {
-        caveats.push(
-          `${entry.replacementAttempts.length} same-year replacement attempt${entry.replacementAttempts.length === 1 ? "" : "s"} checked.`
-        );
-      }
-      if (entry.screenshotError) {
-        caveats.push(`Render error: ${entry.screenshotError}`);
-      }
-
-      return `
-        <article class="entry">
-          <div class="entry-copy">
-            <span class="date">${htmlEscape(entry.date)}</span>
-            <h2>${htmlEscape(entry.title)}</h2>
-            <dl>
-              <div>
-                <dt>Tech stack</dt>
-                <dd>${htmlEscape(entry.techStack)}</dd>
-              </div>
-              <div>
-                <dt>Source</dt>
-                <dd><a href="${htmlEscape(entry.source)}">Wayback capture</a></dd>
-              </div>
-            </dl>
-            <p>${htmlEscape(entry.notes)}</p>
-            ${
-              caveats.length > 0
-                ? `<div class="caveats"><strong>Review notes</strong><ul>${caveats.map((caveat) => `<li>${htmlEscape(caveat)}</li>`).join("")}</ul></div>`
-                : `<div class="caveats usable"><strong>Review notes</strong><p>No render caveats recorded.</p></div>`
-            }
-          </div>
-          ${screenshotUrl ? `<img src="${htmlEscape(screenshotUrl)}" alt="${htmlEscape(`${entry.date} ${entry.title}`)}">` : ""}
-        </article>`;
-    })
-    .join("\n");
+  const range = String(report.stats.range ?? "").replace("-", " - ");
+  const createdAt = job.createdAt
+    ? new Date(job.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "";
+  const timelineEntries = entries.map((entry) => ({
+    date: entry.date,
+    title: entry.title,
+    notes: entry.notes,
+    techStack: entry.techStack,
+    source: entry.source,
+    imageUrl: screenshotPathsByEntry.get(entryKey(entry)) ?? null,
+    focusScale: entry.focusScale ?? 1,
+    focusOrigin: entry.focusOrigin ?? "center top",
+    focusHeight: entry.focusHeight ?? "42rem"
+  }));
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${htmlEscape(report.title)}</title>
+  <title>${htmlEscape(job.host)}: ${htmlEscape(range)}</title>
   <style>
-    :root { color-scheme: light; --ink: #19140f; --muted: #6e6459; --paper: #f7f0e2; --panel: #fff9ee; --line: #211a1226; --red: #c83b31; --blue: #315fcb; --signal: #b4ff2f; }
+    :root { color-scheme: light; --ink: #19140f; --muted: #5f6f85; --paper: #f7f0e2; --panel: #d8e6f5; --line: #1d314a24; --red: #d7372f; --blue: #1e5fd8; --signal: #9bff34; --navy: #1b2c42; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(90deg, #19140f0d 1px, transparent 1px) 0 0 / 28px 28px, var(--paper); color: var(--ink); font-family: Aptos, Segoe UI, sans-serif; }
-    main { padding: clamp(2rem, 5vw, 5rem); }
-    header { max-width: 1120px; margin-bottom: 3rem; }
-    .eyebrow, dt, .date { color: var(--red); font-size: .78rem; font-weight: 900; text-transform: uppercase; }
-    h1, h2 { font-family: Georgia, Times New Roman, serif; letter-spacing: 0; }
-    h1 { margin: .6rem 0 1rem; font-size: clamp(3rem, 8vw, 7rem); line-height: .88; }
-    header p { max-width: 820px; color: #33281d; font-size: 1.2rem; line-height: 1.5; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--ink); background: var(--ink); color: var(--paper); margin-top: 1.5rem; }
-    .stats div { padding: 1rem; border-right: 1px solid #f7f0e23b; }
-    .stats div:last-child { border-right: 0; }
-    .stats strong { display: block; font-family: Georgia, Times New Roman, serif; font-size: clamp(1.8rem, 4vw, 3.4rem); line-height: 1; }
-    .stats span { color: #efe1c5cc; font-weight: 800; }
-    .entry { display: grid; grid-template-columns: minmax(280px, .36fr) minmax(0, 1fr); margin-bottom: 2rem; border: 1px solid var(--ink); background: var(--panel); box-shadow: 10px 10px 0 var(--ink); overflow: hidden; break-inside: avoid; }
-    .entry-copy { padding: clamp(1.2rem, 3vw, 2rem); }
-    h2 { margin: .55rem 0 1rem; font-size: clamp(2rem, 4vw, 4rem); line-height: .95; }
-    dl { display: grid; gap: .75rem; margin: 0 0 1rem; }
-    dd { margin: .2rem 0 0; font-weight: 800; line-height: 1.35; }
-    p, li { color: var(--muted); line-height: 1.5; }
-    a { color: var(--ink); font-weight: 900; }
-    img { display: block; width: 100%; height: 34rem; object-fit: cover; object-position: top center; background: var(--ink); }
-    .caveats { margin-top: 1rem; padding: .85rem; border: 1px solid #c83b3166; background: #c83b3112; }
-    .caveats.usable { border-color: #7aa82566; background: #b4ff2f14; }
-    .caveats strong { color: var(--red); font-size: .78rem; text-transform: uppercase; }
-    .caveats.usable strong { color: var(--ink); }
-    .caveats ul { margin: .45rem 0 0; padding-left: 1.2rem; }
-    .meta { margin-top: 1rem; color: var(--muted); font-size: .9rem; font-weight: 800; }
-    @media (max-width: 900px) { .stats, .entry { grid-template-columns: 1fr; } .stats div { border-right: 0; border-bottom: 1px solid #f7f0e23b; } img { height: 26rem; } }
-    @media print { body { background: white; } main { padding: 1rem; } .entry { box-shadow: none; } }
+    body { margin: 0; background: linear-gradient(90deg, #19140f0d 1px, transparent 1px) 0 0 / 28px 28px, radial-gradient(circle at 18% 18%, #d8ff7a55, transparent 24rem), radial-gradient(circle at 78% 20%, #d7e2f044, transparent 30rem), var(--paper); color: var(--ink); font-family: Aptos, Segoe UI, sans-serif; }
+    .site-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; min-height: 3.75rem; padding: 0 clamp(1.25rem, 5vw, 5rem); border-bottom: 1px solid var(--line); background: #f7f0e2e8; backdrop-filter: blur(8px); }
+    .brand { color: var(--ink); font-weight: 950; text-decoration: none; text-transform: uppercase; }
+    main { padding: clamp(1.5rem, 4vw, 4.25rem) clamp(1.25rem, 5vw, 5rem); }
+    .section-heading { margin: 0 0 1.5rem; }
+    .timeline-header-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
+    .timeline-created { color: var(--muted); font-size: .95rem; font-weight: 700; }
+    h1 { max-width: 100%; margin: 0; font-family: Georgia, Times New Roman, serif; font-size: clamp(3rem, 6vw, 5.4rem); line-height: .95; letter-spacing: 0; }
+    .timeline-range { display: block; margin-top: .45rem; color: var(--muted); font-family: Georgia, Times New Roman, serif; font-size: clamp(1.6rem, 3vw, 2rem); font-weight: 800; }
+    .timeline-display-mode { display: flex; align-items: center; gap: 0; margin-top: 1rem; }
+    button { font: inherit; cursor: pointer; }
+    .timeline-display-mode button { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 2.35rem; border: 1px solid var(--ink); padding: .55rem .85rem; background: var(--navy); color: #f7f0e2; font-weight: 950; }
+    .timeline-display-mode button.active { background: var(--signal); color: var(--ink); }
+    .timeline-layout { display: grid; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr); gap: 2rem; align-items: start; }
+    .timeline-nav { display: grid; gap: .5rem; }
+    .timeline-nav.image-only { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; }
+    .timeline-nav button { display: grid; grid-template-columns: 4.5rem 1fr; align-items: center; min-height: 3.25rem; width: 100%; border: 1px solid var(--line); padding: .75rem; background: #fff9ee80; color: var(--navy); text-align: left; font-weight: 900; }
+    .timeline-nav button.active { background: var(--navy); color: #f7f0e2; }
+    .timeline-nav button span { color: var(--red); font-weight: 950; }
+    .timeline-nav button.active span { color: #ff6b5f; }
+    .timeline-nav.image-only button { position: relative; display: block; min-height: 0; aspect-ratio: 1 / .84; padding: 0; overflow: hidden; background: var(--navy); }
+    .timeline-nav.image-only button span { position: absolute; left: .35rem; top: .35rem; z-index: 1; padding: .2rem .35rem; background: #fff9ee; color: var(--red); font-size: .75rem; }
+    .timeline-nav.image-only img { width: 100%; height: 100%; object-fit: cover; object-position: top center; opacity: .82; }
+    .timeline-nav.image-only em { display: grid; min-height: 6rem; place-items: center; color: #f7f0e2; font-size: .75rem; }
+    .timeline-main { min-width: 0; }
+    .timeline-detail { position: relative; border: 1px solid var(--ink); background: #fff9ee; overflow: hidden; }
+    .detail-copy { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 1.5rem; align-items: start; padding: clamp(1.25rem, 3vw, 2rem); background: var(--panel); }
+    .detail-copy > span, dt { color: var(--red); font-size: .78rem; font-weight: 950; text-transform: uppercase; }
+    dl { display: grid; grid-template-columns: minmax(22rem, 2.2fr) minmax(10rem, .8fr); gap: 1.5rem; margin: 0; }
+    dd { margin: .35rem 0 0; color: #00254b; font-weight: 600; line-height: 1.4; }
+    a { color: var(--ink); font-weight: 950; }
+    .screenshot-frame { display: grid; place-items: start center; min-height: var(--focus-height, 42rem); background: #061d33; overflow: hidden; }
+    .screenshot-frame img { display: block; max-width: none; width: 100%; background: #061d33; transform-origin: var(--focus-origin, center top); }
+    .screenshot-frame.focus img { width: calc(100% * var(--focus-scale, 1)); }
+    .screenshot-frame.full { min-height: auto; }
+    .screenshot-frame.full img { width: 100%; }
+    .empty-image { min-height: 30rem; display: grid; place-items: center; color: #f7f0e2; font-weight: 900; }
+    @media (max-width: 1100px) { .timeline-layout { grid-template-columns: 1fr; } .timeline-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { h1 { font-size: clamp(2.4rem, 16vw, 4rem); } .timeline-header-row, .detail-copy, dl { display: block; } .timeline-nav, .timeline-nav.image-only { grid-template-columns: 1fr; } .detail-copy > span { display: block; margin-bottom: 1rem; } }
+    @media print { .site-nav, .timeline-display-mode { display: none; } body { background: white; } main { padding: 1rem; } .timeline-layout { grid-template-columns: 1fr; } .timeline-nav { display: none; } }
   </style>
 </head>
 <body>
+  <nav class="site-nav" aria-label="Site">
+    <a class="brand" href="#">RETROSITE</a>
+  </nav>
   <main>
-    <header>
-      <div class="eyebrow">${htmlEscape(report.publicationStatus ?? "draft")} visual timeline</div>
-      <h1>${htmlEscape(report.title)}</h1>
-      <p>${htmlEscape(report.summary)}</p>
-      <section class="stats" aria-label="Report metrics">
-        ${stats.map(([label, value]) => `<div><strong>${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`).join("")}
-      </section>
-      <div class="meta">Generated ${htmlEscape(job.updatedAt)} for ${htmlEscape(job.host)}${report.publishedAt ? ` - Published ${htmlEscape(report.publishedAt)}` : ""}</div>
-    </header>
-    ${entriesHtml}
+    <section class="section-heading">
+      <div class="timeline-header-row">
+        <span class="timeline-created">${createdAt ? `Timeline created on ${htmlEscape(createdAt)}` : ""}</span>
+      </div>
+      <h1>${htmlEscape(job.host)}</h1>
+      <span class="timeline-range">${htmlEscape(range)}</span>
+      <div class="timeline-display-mode" aria-label="Report display mode">
+        <button type="button" class="active" data-display-mode="timeline">Timeline</button>
+        <button type="button" data-display-mode="image-only">Image Only</button>
+      </div>
+    </section>
+    <section class="timeline-layout" aria-label="${htmlEscape(job.host)} timeline">
+      <nav class="timeline-nav" aria-label="Timeline entries"></nav>
+      <div class="timeline-main">
+        <article class="timeline-detail" aria-live="polite"></article>
+      </div>
+    </section>
   </main>
+  <script type="application/json" id="report-data">${inlineJson(timelineEntries)}</script>
+  <script>
+    (function () {
+      var entries = JSON.parse(document.getElementById("report-data").textContent || "[]");
+      var state = { activeIndex: 0, displayMode: "timeline", imageMode: "focus" };
+      var nav = document.querySelector(".timeline-nav");
+      var detail = document.querySelector(".timeline-detail");
+
+      function summarizeTechStack(techStack) {
+        var core = String(techStack || "").split(String.fromCharCode(183))[0].trim();
+        var parts = core.split(",").map(function (part) { return part.trim(); }).filter(Boolean);
+        var cms = parts.find(function (part) { return /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(part); });
+        var theme = parts.find(function (part) { return /^theme:/i.test(part); });
+        if (cms && theme) return cms + ", " + theme;
+        if (cms) return cms;
+        if (parts.length <= 2) return core || "Unknown";
+        return parts.slice(0, 2).join(", ");
+      }
+
+      function clear(element) {
+        while (element.firstChild) element.removeChild(element.firstChild);
+      }
+
+      function appendTextElement(parent, tagName, text, className) {
+        var element = document.createElement(tagName);
+        if (className) element.className = className;
+        element.textContent = text;
+        parent.appendChild(element);
+        return element;
+      }
+
+      function renderNav() {
+        nav.className = "timeline-nav" + (state.displayMode === "image-only" ? " image-only" : "");
+        clear(nav);
+        entries.forEach(function (entry, index) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = index === state.activeIndex ? "active" : "";
+          button.setAttribute("aria-label", entry.date.slice(0, 4) + " " + entry.title + ": " + entry.techStack);
+          button.addEventListener("click", function () {
+            state.activeIndex = index;
+            state.imageMode = "focus";
+            render();
+          });
+          appendTextElement(button, "span", entry.date.slice(0, 4));
+          if (state.displayMode === "image-only") {
+            if (entry.imageUrl) {
+              var img = document.createElement("img");
+              img.src = entry.imageUrl;
+              img.alt = "";
+              img.loading = "lazy";
+              button.appendChild(img);
+            } else {
+              appendTextElement(button, "em", "No image");
+            }
+          } else {
+            button.appendChild(document.createTextNode(summarizeTechStack(entry.techStack)));
+          }
+          nav.appendChild(button);
+        });
+      }
+
+      function renderDetail() {
+        clear(detail);
+        var entry = entries[state.activeIndex];
+        if (!entry) return;
+
+        var copy = document.createElement("div");
+        copy.className = "detail-copy";
+        var dl = document.createElement("dl");
+        var tech = document.createElement("div");
+        appendTextElement(tech, "dt", "Tech stack");
+        appendTextElement(tech, "dd", entry.techStack || "Needs render review");
+        var source = document.createElement("div");
+        appendTextElement(source, "dt", "Source");
+        var dd = document.createElement("dd");
+        var link = document.createElement("a");
+        link.href = entry.source;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = "Wayback capture";
+        dd.appendChild(link);
+        source.appendChild(dd);
+        dl.appendChild(tech);
+        dl.appendChild(source);
+        copy.appendChild(dl);
+        appendTextElement(copy, "span", "Captured on " + entry.date);
+        detail.appendChild(copy);
+
+        if (entry.imageUrl) {
+          var frame = document.createElement("div");
+          frame.className = "screenshot-frame " + state.imageMode;
+          frame.style.setProperty("--focus-scale", entry.focusScale || 1);
+          frame.style.setProperty("--focus-origin", entry.focusOrigin || "center top");
+          frame.style.setProperty("--focus-height", entry.focusHeight || "42rem");
+          var image = document.createElement("img");
+          image.src = entry.imageUrl;
+          image.alt = entry.date + " " + entry.title;
+          frame.appendChild(image);
+          detail.appendChild(frame);
+        } else {
+          appendTextElement(detail, "div", "No exported screenshot file was available for this entry.", "empty-image");
+        }
+      }
+
+      function renderModeButtons() {
+        document.querySelectorAll("[data-display-mode]").forEach(function (button) {
+          button.classList.toggle("active", button.dataset.displayMode === state.displayMode);
+          button.onclick = function () {
+            state.displayMode = button.dataset.displayMode;
+            render();
+          };
+        });
+      }
+
+      function render() {
+        renderModeButtons();
+        renderNav();
+        renderDetail();
+      }
+
+      render();
+    })();
+  </script>
 </body>
 </html>`;
+}
+
+const crc32Table = new Uint32Array(256).map((_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
+function crc32(buffer) {
+  let value = 0xffffffff;
+  for (const byte of buffer) {
+    value = crc32Table[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const year = Math.max(date.getFullYear(), 1980);
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosDate, dosTime };
+}
+
+function u16(value) {
+  const buffer = Buffer.alloc(2);
+  buffer.writeUInt16LE(value);
+  return buffer;
+}
+
+function u32(value) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32LE(value >>> 0);
+  return buffer;
+}
+
+function buildZipArchive(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { dosDate, dosTime } = dosDateTime();
+
+  for (const file of files) {
+    const name = file.path.replace(/\\/g, "/");
+    const nameBuffer = Buffer.from(name, "utf8");
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data);
+    const checksum = crc32(data);
+    const localHeaderOffset = offset;
+    const localHeader = Buffer.concat([
+      u32(0x04034b50),
+      u16(20),
+      u16(0),
+      u16(0),
+      u16(dosTime),
+      u16(dosDate),
+      u32(checksum),
+      u32(data.length),
+      u32(data.length),
+      u16(nameBuffer.length),
+      u16(0),
+      nameBuffer
+    ]);
+
+    localParts.push(localHeader, data);
+    offset += localHeader.length + data.length;
+
+    centralParts.push(
+      Buffer.concat([
+        u32(0x02014b50),
+        u16(20),
+        u16(20),
+        u16(0),
+        u16(0),
+        u16(dosTime),
+        u16(dosDate),
+        u32(checksum),
+        u32(data.length),
+        u32(data.length),
+        u16(nameBuffer.length),
+        u16(0),
+        u16(0),
+        u16(0),
+        u16(0),
+        u32(0),
+        u32(localHeaderOffset),
+        nameBuffer
+      ])
+    );
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const endRecord = Buffer.concat([
+    u32(0x06054b50),
+    u16(0),
+    u16(0),
+    u16(files.length),
+    u16(files.length),
+    u32(centralDirectory.length),
+    u32(offset),
+    u16(0)
+  ]);
+
+  return Buffer.concat([...localParts, centralDirectory, endRecord]);
+}
+
+async function buildReportExportArchive(job, documentKind) {
+  const report = job.report;
+  const entries = report?.curatedEntries ?? [];
+  const baseName = reportExportBaseName(job);
+  const { files: screenshotFiles, screenshotPathsByEntry } = await collectExportScreenshotAssets(entries);
+  const documentName = documentKind === "markdown" ? `${baseName}.md` : `${baseName}.html`;
+  const document = documentKind === "markdown"
+    ? buildReportMarkdown(job, screenshotPathsByEntry)
+    : buildReportHtml(job, screenshotPathsByEntry);
+  const files = [
+    { path: documentName, data: Buffer.from(document, "utf8") },
+    ...screenshotFiles
+  ];
+
+  return {
+    filename: `${baseName}-${documentKind}-export.zip`,
+    buffer: buildZipArchive(files)
+  };
 }
 
 function queuePersistJob(job) {
@@ -1390,7 +2087,7 @@ async function runReportJob(job) {
     updateJob(job, {
       stage: "discovering",
       progress: 25,
-      message: "Querying Wayback Machine homepage captures."
+      message: "Querying Wayback Machine captures for this target."
     });
 
     const discovery = await discoverCaptures(job.target);
@@ -1398,7 +2095,7 @@ async function runReportJob(job) {
       return;
     }
     if (discovery.captureCount === 0) {
-      throw new Error("No homepage captures were found for this domain.");
+      throw new Error("No captures were found for this report target.");
     }
 
     updateJob(job, {
@@ -1425,11 +2122,12 @@ async function runReportJob(job) {
     if (canceledReportJob(job)) {
       return;
     }
+    const renderBudget = candidateRenderBudget({ ...job, report });
     updateJob(job, {
       report,
       stage: "rendering",
       progress: 62,
-      message: `Rendering the first ${Math.min(normalizeScreenshotLimit(job.screenshotLimit), report.entries.length)} candidate screenshots.`
+      message: `Rendering ${renderBudget} balanced candidate screenshots across capture years.`
     });
 
     await renderReportScreenshots(job);
@@ -1463,7 +2161,27 @@ async function runReportJob(job) {
 }
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, runnerMode: inlineRunnerEnabled() ? "inline" : "external" });
+  response.json({
+    ok: true,
+    runnerMode: inlineRunnerEnabled() ? "inline" : "external",
+    mode: retrositeMode()
+  });
+});
+
+app.get("/api/config", (_request, response) => {
+  response.json(publicConfig());
+});
+
+app.post("/api/requests", async (request, response) => {
+  try {
+    const timelineRequest = normalizeTimelineRequestBody(request.body);
+    await writeTimelineRequest(timelineRequest);
+    response.status(202).json({ request: timelineRequest });
+  } catch (error) {
+    response.status(400).json({
+      error: error instanceof Error ? error.message : "Unable to submit timeline request."
+    });
+  }
 });
 
 app.get("/api/reports", async (request, response) => {
@@ -1496,13 +2214,15 @@ app.get("/api/reports", async (request, response) => {
 
 app.post("/api/reports", (request, response) => {
   try {
+    if (rejectReportMutationInReadOnlyMode(response)) return;
+
     const target = String(request.body?.url ?? "").trim();
     if (!target) {
       response.status(400).json({ error: "Missing url in request body." });
       return;
     }
 
-    const host = normalizeHomepage(target);
+    const host = normalizeReportTarget(target).target;
     const activeJobs = activeReportJobs();
     const duplicateActiveJob = activeJobs.find((job) => job.host === host);
     if (duplicateActiveJob) {
@@ -1599,17 +2319,18 @@ function seedReportJob() {
 
 app.get("/api/reports/:id", async (request, response) => {
   const key = request.params.id;
+  const normalizedKey = key === "krynsky-com" ? "krynsky.com" : key;
 
   await refreshPersistedJobsForExternalRunner();
   const version = request.query.version ? Number(request.query.version) : undefined;
 
-  if (key === "krynsky.com" && version === 0) {
+  if (normalizedKey === "krynsky.com" && version === 0) {
     response.json(seedReportJob());
     return;
   }
-  const job = findJobByIdOrDomain(key, version);
+  const job = findJobByIdOrDomain(normalizedKey, version);
   if (!job) {
-    if (key === "krynsky.com" && version == null) {
+    if (normalizedKey === "krynsky.com" && version == null) {
       response.json(seedReportJob());
       return;
     }
@@ -1622,8 +2343,9 @@ app.get("/api/reports/:id", async (request, response) => {
 
 app.get("/api/reports/:id/versions", async (request, response) => {
   const key = request.params.id;
+  const normalizedKey = key === "krynsky-com" ? "krynsky.com" : key;
   await refreshPersistedJobsForExternalRunner();
-  const versions = findAllVersionsForDomain(key);
+  const versions = findAllVersionsForDomain(normalizedKey);
 
   const versionEntries = versions.map((job) => ({
     version: job.version ?? 1,
@@ -1635,7 +2357,7 @@ app.get("/api/reports/:id/versions", async (request, response) => {
     entryCount: job.report?.curatedEntries?.length ?? 0
   }));
 
-  if (key === "krynsky.com") {
+  if (normalizedKey === "krynsky.com") {
     versionEntries.push({
       version: 0,
       id: "krynsky-com-seed",
@@ -1657,6 +2379,8 @@ app.get("/api/reports/:id/versions", async (request, response) => {
 });
 
 app.post("/api/reports/:id/rerun", (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const key = request.params.id;
   const latestJob = findJobByIdOrDomain(key);
   if (!latestJob) {
@@ -1702,6 +2426,8 @@ app.post("/api/reports/:id/rerun", (request, response) => {
 });
 
 app.delete("/api/reports/:id", async (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const key = request.params.id;
 
   if (key === "krynsky-com-seed") {
@@ -1733,6 +2459,8 @@ app.delete("/api/reports/:id", async (request, response) => {
 });
 
 app.post("/api/reports/:id/cancel", (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
@@ -1755,6 +2483,8 @@ app.post("/api/reports/:id/cancel", (request, response) => {
 });
 
 app.post("/api/reports/:id/retry", (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const sourceJob = findJobByIdOrDomain(request.params.id);
   if (!sourceJob) {
     response.status(404).json({ error: "Report job not found." });
@@ -1791,7 +2521,7 @@ app.post("/api/reports/:id/retry", (request, response) => {
 
   const job = createQueuedReportJob({
     host: sourceJob.host,
-    screenshotLimit: defaultScreenshotLimit,
+    screenshotLimit: normalizeScreenshotLimit(sourceJob.screenshotLimit),
     notifyEmail: sourceJob.notifyEmail ?? null,
     version: nextVersionForDomain(sourceJob.host),
     message: `Retry created from ${sourceJob.status} report job ${sourceJob.id}.`
@@ -1804,6 +2534,8 @@ app.post("/api/reports/:id/retry", (request, response) => {
 });
 
 app.patch("/api/reports/:id", (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
@@ -1863,6 +2595,8 @@ app.patch("/api/reports/:id", (request, response) => {
 });
 
 app.patch("/api/reports/:id/entries", (request, response) => {
+  if (rejectReportMutationInReadOnlyMode(response)) return;
+
   const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
@@ -1882,6 +2616,7 @@ app.patch("/api/reports/:id/entries", (request, response) => {
   const hasNotesEdit = Object.prototype.hasOwnProperty.call(body, "notes");
   const hasTechStackEdit = Object.prototype.hasOwnProperty.call(body, "techStack");
   const included = body.included === true;
+  const replaceSelectedYear = body.replaceSelectedYear === true;
   const targetKey = `${timestamp}:${original}`;
   const renderedEntry = job.report.entries.find(
     (entry) => entryKey(entry) === targetKey && entry.screenshotStatus === "rendered"
@@ -1910,7 +2645,24 @@ app.patch("/api/reports/:id/entries", (request, response) => {
   let curatedEntries = job.report.curatedEntries ?? [];
   if (hasIncludedChange) {
     if (included) {
-      if (!curatedEntries.some((entry) => entryKey(entry) === targetKey)) {
+      if (replaceSelectedYear) {
+        const targetYear = renderedEntry.date.slice(0, 4);
+        const existingYearEntry = curatedEntries.find((entry) => entry.date.slice(0, 4) === targetYear);
+        const replacement = curatedEntryCopy(renderedEntry);
+        if (existingYearEntry) {
+          if (!hasTitleEdit) {
+            replacement.title = existingYearEntry.title;
+          }
+          if (!hasNotesEdit) {
+            replacement.notes = existingYearEntry.notes;
+          }
+          if (!hasTechStackEdit) {
+            replacement.techStack = existingYearEntry.techStack;
+          }
+        }
+        curatedEntries = curatedEntries.filter((entry) => entry.date.slice(0, 4) !== targetYear);
+        curatedEntries.push(replacement);
+      } else if (!curatedEntries.some((entry) => entryKey(entry) === targetKey)) {
         curatedEntries.push(curatedEntryCopy(renderedEntry));
       }
     } else {
@@ -1936,7 +2688,9 @@ app.patch("/api/reports/:id/entries", (request, response) => {
   updateJob(job, {
     message: hasIncludedChange
       ? included
-        ? `Included ${renderedEntry.date} in the generated report.`
+        ? replaceSelectedYear
+          ? `Selected ${renderedEntry.date} screenshot for the ${renderedEntry.date.slice(0, 4)} timeline record.`
+          : `Included ${renderedEntry.date} in the generated report.`
         : `Excluded ${renderedEntry.date} from the generated report.`
       : `Updated ${renderedEntry.date} report details.`
   });
@@ -1944,7 +2698,8 @@ app.patch("/api/reports/:id/entries", (request, response) => {
   response.json(publicJob(job));
 });
 
-app.get("/api/reports/:id/export.md", (request, response) => {
+app.get("/api/reports/:id/export.md", async (request, response) => {
+  await refreshPersistedJobsForExternalRunner();
   const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).send("Report job not found.");
@@ -1956,13 +2711,14 @@ app.get("/api/reports/:id/export.md", (request, response) => {
     return;
   }
 
-  const filename = `${job.host.replace(/[^a-z0-9.-]+/gi, "-")}-visual-timeline.md`;
-  response.setHeader("content-type", "text/markdown; charset=utf-8");
+  const { filename, buffer } = await buildReportExportArchive(job, "markdown");
+  response.setHeader("content-type", "application/zip");
   response.setHeader("content-disposition", `attachment; filename="${filename}"`);
-  response.send(buildReportMarkdown(job, request));
+  response.send(buffer);
 });
 
-app.get("/api/reports/:id/export.html", (request, response) => {
+app.get("/api/reports/:id/export.html", async (request, response) => {
+  await refreshPersistedJobsForExternalRunner();
   const job = findJobByIdOrDomain(request.params.id);
   if (!job) {
     response.status(404).send("Report job not found.");
@@ -1974,10 +2730,10 @@ app.get("/api/reports/:id/export.html", (request, response) => {
     return;
   }
 
-  const filename = `${job.host.replace(/[^a-z0-9.-]+/gi, "-")}-visual-timeline.html`;
-  response.setHeader("content-type", "text/html; charset=utf-8");
+  const { filename, buffer } = await buildReportExportArchive(job, "html");
+  response.setHeader("content-type", "application/zip");
   response.setHeader("content-disposition", `attachment; filename="${filename}"`);
-  response.send(buildReportHtml(job, request));
+  response.send(buffer);
 });
 
 app.get("/api/wayback/discover", async (request, response) => {

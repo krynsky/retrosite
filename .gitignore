@@ -1,9 +1,11 @@
 node_modules/
 dist/
 .vite/
+.codex-logs/
+.claude/settings.local.json
 server/generated/
 npm-debug.log*
 *.log
 docs/screenshots/
-*.png
+tmp-*.png
 *.local

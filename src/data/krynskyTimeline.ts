@@ -18,8 +18,9 @@ export const krynskyTimeline: TimelineEntry[] = [
     source: "https://web.archive.org/web/19970108062205if_/http://krynsky.com:80/",
     image: "/screenshots/19970108062205-desperate-dialogue-portrait-homepage.png",
     notes: "Earliest fully rendered design: black background, portrait image, and small poetic navigation.",
-    focusScale: 1.45,
-    focusOrigin: "center top"
+    focusScale: 2.35,
+    focusOrigin: "center top",
+    focusHeight: "34rem"
   },
   {
     date: "1998-02-03",

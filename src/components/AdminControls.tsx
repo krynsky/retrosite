@@ -1,8 +1,25 @@
-import { useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { ArrowUpRight, Maximize2, Sparkles, ZoomIn } from "lucide-react";
 import type { ReportJob, DraftReportEntry } from "../types";
 import { reportEntryKey, entryQualityLabel, entryQualityTone, entryQualityDetails } from "../helpers";
-import { ArrowUpRight } from "lucide-react";
+
+function entryYear(entry: DraftReportEntry) {
+  return entry.date.slice(0, 4);
+}
+
+function entryChoiceScore(entry: DraftReportEntry) {
+  const quality = entry.screenshotQuality;
+  if (!quality) return Number.NEGATIVE_INFINITY;
+  return quality.qualityScore ?? quality.visualScore ?? 0;
+}
+
+function sortEntryChoices(a: DraftReportEntry, b: DraftReportEntry) {
+  const scoreDifference = entryChoiceScore(b) - entryChoiceScore(a);
+  if (scoreDifference !== 0) {
+    return scoreDifference;
+  }
+  return a.date.localeCompare(b.date) || a.timestamp.localeCompare(b.timestamp);
+}
 
 export function AdminControls({
   job,
@@ -20,31 +37,54 @@ export function AdminControls({
   const [reportSaving, setReportSaving] = useState(false);
   const [reportError, setReportError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [entryImageModes, setEntryImageModes] = useState<Record<string, "focus" | "full">>({});
 
   const selectedEntries = job.report?.curatedEntries ?? [];
-  const selectedEntryKeys = useMemo(() => new Set(selectedEntries.map(reportEntryKey)), [selectedEntries]);
-  const curatedEntriesByKey = useMemo(
-    () => new Map(selectedEntries.map((entry) => [reportEntryKey(entry), entry])),
+  const selectedEntriesByYear = useMemo(
+    () => new Map(selectedEntries.map((entry) => [entryYear(entry), entry])),
     [selectedEntries]
   );
-  const entries = useMemo(() => {
+  const entryGroups = useMemo(() => {
+    const groups = new Map<string, DraftReportEntry[]>();
     const renderedEntries = job.report?.entries?.filter((entry) => entry.screenshotStatus === "rendered") ?? [];
-    return renderedEntries
-      .map((entry) => curatedEntriesByKey.get(reportEntryKey(entry)) ?? entry)
-      .sort((a, b) => {
-        const aIncluded = selectedEntryKeys.has(reportEntryKey(a));
-        const bIncluded = selectedEntryKeys.has(reportEntryKey(b));
-        if (aIncluded !== bIncluded) {
-          return aIncluded ? -1 : 1;
-        }
-        return a.date.localeCompare(b.date);
-      });
-  }, [curatedEntriesByKey, job.report?.entries, selectedEntryKeys]);
+    for (const entry of renderedEntries) {
+      const year = entryYear(entry);
+      groups.set(year, [...(groups.get(year) ?? []), entry]);
+    }
+
+    for (const entry of selectedEntries) {
+      const year = entryYear(entry);
+      const existingEntries = groups.get(year) ?? [];
+      if (!existingEntries.some((candidate) => reportEntryKey(candidate) === reportEntryKey(entry))) {
+        groups.set(year, [...existingEntries, entry]);
+      }
+    }
+
+    return [...groups.entries()]
+      .map(([year, options]) => {
+        const uniqueOptions = [...new Map(options.map((entry) => [reportEntryKey(entry), entry])).values()];
+        const selectedEntry = selectedEntriesByYear.get(year) ?? null;
+        return {
+          year,
+          selectedEntry,
+          options: uniqueOptions.sort((a, b) => {
+            const aSelected = selectedEntry ? reportEntryKey(a) === reportEntryKey(selectedEntry) : false;
+            const bSelected = selectedEntry ? reportEntryKey(b) === reportEntryKey(selectedEntry) : false;
+            if (aSelected !== bSelected) {
+              return aSelected ? -1 : 1;
+            }
+            return sortEntryChoices(a, b);
+          })
+        };
+      })
+      .sort((a, b) => a.year.localeCompare(b.year));
+  }, [job.report?.entries, selectedEntries, selectedEntriesByYear]);
 
   async function updateEntryCuration(
     entry: DraftReportEntry,
     included?: boolean,
-    edits?: Pick<DraftReportEntry, "title" | "notes" | "techStack">
+    edits?: Pick<DraftReportEntry, "title" | "notes" | "techStack">,
+    options?: { replaceSelectedYear?: boolean }
   ) {
     const key = reportEntryKey(entry);
     setCurationSavingKey(key);
@@ -57,7 +97,8 @@ export function AdminControls({
           timestamp: entry.timestamp,
           original: entry.original,
           ...(typeof included === "boolean" ? { included } : {}),
-          ...(edits ? { title: edits.title, notes: edits.notes, techStack: edits.techStack } : {})
+          ...(edits ? { title: edits.title, notes: edits.notes, techStack: edits.techStack } : {}),
+          ...(options?.replaceSelectedYear ? { replaceSelectedYear: true } : {})
         })
       });
       const payload = await response.json();
@@ -88,6 +129,14 @@ export function AdminControls({
 
   async function saveEntryEdit(entry: DraftReportEntry) {
     await updateEntryCuration(entry, undefined, entryDraft);
+  }
+
+  function entryImageMode(year: string) {
+    return entryImageModes[year] ?? "focus";
+  }
+
+  function setEntryImageMode(year: string, mode: "focus" | "full") {
+    setEntryImageModes((modes) => ({ ...modes, [year]: mode }));
   }
 
   function startReportEdit() {
@@ -243,19 +292,23 @@ export function AdminControls({
       {curationError && <p className="error-note">{curationError}</p>}
 
       <div className="generated-entry-list">
-        {entries.map((entry) => {
+        {entryGroups.length === 0 && (
+          <p className="warning-note">No rendered screenshots are available for curation yet.</p>
+        )}
+        {entryGroups.map(({ year, selectedEntry, options }) => {
+          const entry = selectedEntry ?? options[0];
           const key = reportEntryKey(entry);
-          const included = selectedEntryKeys.has(key);
+          const included = Boolean(selectedEntry);
           const saving = curationSavingKey === key;
           const editing = editingEntryKey === key;
           const qualityDetails = entryQualityDetails(entry);
           return (
             <article
-              key={`${entry.date}-${entry.original}`}
+              key={year}
               className={`generated-entry ${included ? "included" : "excluded"}`}
             >
               <div>
-                <span>{entry.date}</span>
+                <span>{year}</span>
                 <em>{included ? "Included" : "Excluded"}</em>
                 {editing ? (
                   <div className="entry-edit-form">
@@ -299,6 +352,35 @@ export function AdminControls({
                     <p>{entry.notes}</p>
                   </>
                 )}
+                <div className="entry-screenshot-choices">
+                  <strong>
+                    {options.length} rendered screenshot{options.length === 1 ? "" : "s"} for {year}
+                  </strong>
+                  <div className="screenshot-choice-grid">
+                    {options.map((option) => {
+                      const optionKey = reportEntryKey(option);
+                      const optionSelected = selectedEntry ? optionKey === reportEntryKey(selectedEntry) : false;
+                      const optionSaving = curationSavingKey === optionKey;
+                      return (
+                        <button
+                          key={optionKey}
+                          type="button"
+                          className={`screenshot-choice ${optionSelected ? "active" : ""}`}
+                          disabled={optionSaving || optionSelected}
+                          onClick={() =>
+                            void updateEntryCuration(option, true, undefined, { replaceSelectedYear: true })
+                          }
+                        >
+                          {option.screenshotUrl && (
+                            <img src={option.screenshotUrl} alt={`${option.date} rendered capture option`} />
+                          )}
+                          <span>{option.date}</span>
+                          <em>{entryQualityLabel(option)}</em>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className={`entry-quality ${entryQualityTone(entry)}`}>
                   <strong>{entryQualityLabel(entry)}</strong>
                   {qualityDetails.length > 0 ? (
@@ -356,7 +438,40 @@ export function AdminControls({
                   )}
                 </div>
               </div>
-              {entry.screenshotUrl && <img src={entry.screenshotUrl} alt={`${entry.date} rendered capture`} />}
+              {entry.screenshotUrl && (
+                <div className="generated-entry-preview">
+                  <div className="image-mode-toggle edit-image-mode-toggle" aria-label={`${year} screenshot view mode`}>
+                    <button
+                      type="button"
+                      className={entryImageMode(year) === "focus" ? "active" : ""}
+                      onClick={() => setEntryImageMode(year, "focus")}
+                    >
+                      <ZoomIn size={16} />
+                      Focus
+                    </button>
+                    <button
+                      type="button"
+                      className={entryImageMode(year) === "full" ? "active" : ""}
+                      onClick={() => setEntryImageMode(year, "full")}
+                    >
+                      <Maximize2 size={16} />
+                      Full
+                    </button>
+                  </div>
+                  <div
+                    className={`screenshot-frame ${entryImageMode(year)}`}
+                    style={
+                      {
+                        "--focus-scale": 1,
+                        "--focus-origin": "center top",
+                        "--focus-height": "32rem"
+                      } as CSSProperties
+                    }
+                  >
+                    <img src={entry.screenshotUrl} alt={`${entry.date} rendered capture`} />
+                  </div>
+                </div>
+              )}
             </article>
           );
         })}

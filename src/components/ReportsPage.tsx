@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import type { ReportJobSummary } from "../types";
+import { useAppConfig } from "../useAppConfig";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 
@@ -14,7 +15,8 @@ export function ReportsPage() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const admin = new URLSearchParams(window.location.search).get("admin") === "1";
+  const { config } = useAppConfig();
+  const admin = config.canEditReports;
 
   useEffect(() => {
     let cancelled = false;
@@ -58,11 +60,12 @@ export function ReportsPage() {
   }
 
   return (
-    <main>
+    <main className="page paper-bg">
       <SiteNav />
       <section className="reports-list-page">
-        <div className="section-heading">
-          <h1>All Reports</h1>
+        <div className="recent-head">
+          <h1 className="recent-title">All Timelines</h1>
+          <span className="recent-meta">{filtered.length} saved</span>
         </div>
 
         <div className="reports-filters">
@@ -88,13 +91,13 @@ export function ReportsPage() {
         {error && <p className="error-note">{error}</p>}
         {loading && <p>Loading reports...</p>}
 
-        <div className="report-card-grid">
+        <div className="recent-grid recent-grid--all">
           {pageJobs.map((job) => (
             <ReportCard key={job.id} job={job} admin={admin} onDelete={handleDelete} />
           ))}
         </div>
 
-        {!loading && filtered.length === 0 && <p>No reports found.</p>}
+        {!loading && filtered.length === 0 && <p>No timelines found.</p>}
 
         {totalPages > 1 && (
           <div className="reports-pagination">

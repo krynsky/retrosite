@@ -11,7 +11,7 @@ test("builds a completion notification record with the report link", () => {
       status: "complete",
       notifyEmail: "reader@example.com",
       report: {
-        generatedReportUrl: "/reports/generated/job-123"
+        generatedReportUrl: "/timeline/example.com"
       }
     },
     "http://127.0.0.1:4317"
@@ -20,5 +20,5 @@ test("builds a completion notification record with the report link", () => {
   assert.equal(record.recipient, "reader@example.com");
   assert.equal(record.type, "report_complete");
   assert.match(record.subject, /example\.com/);
-  assert.match(record.text, /http:\/\/127\.0\.0\.1:4317\/reports\/generated\/job-123/);
+  assert.match(record.text, /http:\/\/127\.0\.0\.1:4317\/timeline\/example\.com/);
 });

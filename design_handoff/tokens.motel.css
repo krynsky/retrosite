@@ -1,0 +1,46 @@
+/* =========================================================
+   Retrosite — Roadside Motel · Neon palette
+   Overrides the defaults in tokens.css. Load AFTER tokens.css.
+   ========================================================= */
+
+:root {
+  /* ---------- Paper / surface ---------- */
+  --paper:        #f0e3c8;   /* warm motel cream */
+  --paper-2:      #e3d4b0;   /* aged neon-sign cream */
+  --paper-edge:   #d2c098;
+  --paper-deep:   #bfa872;
+  --manila:       #e8d9b0;
+
+  /* ---------- Ink ---------- */
+  --ink:          #161412;
+  --ink-soft:     #2a251f;
+  --ink-mute:     #6b6354;
+  --ink-faint:    #9a917e;
+
+  /* ---------- Neon ink + marker ---------- */
+  --ballpoint:    #0a4a55;   /* deep teal pen */
+  --ballpoint-2:  #0f5f6e;
+  --marker-blue:  #1e8a9a;   /* faded teal underline */
+  --marker-pink:  #ff5fa2;   /* hot motel-sign pink */
+  --marker-red:   #d23a7e;
+
+  /* ---------- Sticker / accent (Neon) ---------- */
+  --lime:         #ff5fa2;   /* primary CTA — hot pink */
+  --lime-deep:    #d23a7e;   /* primary pressed */
+  --sticky:       #5ed3d8;   /* aqua sticker */
+  --sticky-yellow:#ffe488;   /* warm bulb yellow */
+  --tape:         rgba(220, 210, 175, 0.72);
+}
+
+/* Marker underline SVGs — re-tint to match neon palette */
+.u-marker {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 7 C 40 2, 80 12, 130 6 S 195 4, 198 8' stroke='%231e8a9a' stroke-width='3' stroke-linecap='round' fill='none'/></svg>");
+}
+.u-marker-pink {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 7 C 40 2, 80 12, 130 6 S 195 4, 198 8' stroke='%23ff5fa2' stroke-width='3' stroke-linecap='round' fill='none'/></svg>");
+}
+.u-marker-double {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 4 C 50 1, 110 9, 198 5' stroke='%231e8a9a' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>"),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 8 C 60 4, 130 12, 198 7' stroke='%231e8a9a' stroke-width='2.4' stroke-linecap='round' fill='none'/></svg>");
+}

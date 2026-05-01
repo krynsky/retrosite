@@ -13,6 +13,7 @@ export type Candidate = {
   original: string;
   replayUrl: string;
   reason: string;
+  rank?: number;
 };
 
 export type DiscoveryResult = {
@@ -46,8 +47,11 @@ export type DraftReportEntry = {
     bytes: number;
     width: number;
     height: number;
+    visualScore?: number | null;
+    qualityScore?: number;
     classification: string;
     reasons?: string[];
+    diagnostics?: Record<string, unknown>;
   } | null;
   replacementOf: string | null;
   replacementAttempts: Array<{
@@ -55,6 +59,7 @@ export type DraftReportEntry = {
     date: string;
     original: string;
   }>;
+  candidateRank?: number;
 };
 
 export type DraftReport = {
@@ -68,6 +73,7 @@ export type DraftReport = {
     yearCount: number;
     range: string;
     renderedCount?: number;
+    usableRenderCount?: number;
     selectedCount?: number;
   };
   entries: DraftReportEntry[];
@@ -142,4 +148,24 @@ export type ReportJobSummary = {
 export type QueueSummary = {
   activeJobCount: number;
   maxActiveJobs: number;
+};
+
+export type AppConfig = {
+  mode: "local" | "request-only";
+  canGenerateReports: boolean;
+  canEditReports: boolean;
+  canSubmitRequests: boolean;
+  requestSink: string;
+};
+
+export type TimelineRequest = {
+  id: string;
+  url: string;
+  target: string;
+  domain: string;
+  path: string;
+  email: string | null;
+  notes: string;
+  status: "new" | string;
+  createdAt: string;
 };

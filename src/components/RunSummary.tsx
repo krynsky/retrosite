@@ -1,5 +1,3 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
 import type { ReportJob } from "../types";
 
 function computeStats(job: ReportJob) {
@@ -47,85 +45,74 @@ function computeStats(job: ReportJob) {
   return { discoveryStats, renderStats, curationStats };
 }
 
-export function RunSummary({ job, isAdmin = false }: { job: ReportJob; isAdmin?: boolean }) {
-  const [expanded, setExpanded] = useState(isAdmin);
+export function RunSummary({ job }: { job: ReportJob; isAdmin?: boolean }) {
   const { discoveryStats, renderStats, curationStats } = computeStats(job);
 
   if (!discoveryStats && !renderStats && !curationStats) return null;
 
   return (
-    <section className="run-summary" aria-label="Report run summary">
-      <button
-        type="button"
-        className="run-summary-toggle"
-        onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-      >
-        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        How this report was created
-      </button>
+    <section className="run-summary" aria-label="How this timeline was created">
+      <h3 className="run-summary-heading">How this timeline was created</h3>
 
-      {expanded && (
-        <div className="run-summary-content">
-          {discoveryStats && (
-            <div className="run-summary-group">
-              <h4>Discovery</h4>
-              <dl>
-                <dt>URL variants queried</dt>
-                <dd>{discoveryStats.variants}</dd>
-                <dt>Captures found</dt>
-                <dd>{discoveryStats.captures.toLocaleString()}</dd>
-                <dt>Years spanned</dt>
-                <dd>{discoveryStats.years}</dd>
-                <dt>Candidates selected</dt>
-                <dd>{discoveryStats.candidates}</dd>
-              </dl>
-            </div>
-          )}
+      <div className="run-summary-content">
+        {discoveryStats && (
+          <div className="run-summary-group">
+            <h4>Discovery</h4>
+            <dl>
+              <dt>URL variants queried</dt>
+              <dd>{discoveryStats.variants}</dd>
+              <dt>Captures found</dt>
+              <dd>{discoveryStats.captures.toLocaleString()}</dd>
+              <dt>Years spanned</dt>
+              <dd>{discoveryStats.years}</dd>
+              <dt>Candidates selected</dt>
+              <dd>{discoveryStats.candidates}</dd>
+            </dl>
+          </div>
+        )}
 
-          {renderStats && (
-            <div className="run-summary-group">
-              <h4>Rendering</h4>
-              <dl>
-                <dt>Screenshots attempted</dt>
-                <dd>{renderStats.attempted}</dd>
-                <dt>Usable</dt>
-                <dd>{renderStats.successful}</dd>
-                <dt>Weak</dt>
-                <dd>{renderStats.weak}</dd>
-                <dt>Failed</dt>
-                <dd>{renderStats.failed}</dd>
-                {renderStats.replacements > 0 && (
-                  <>
-                    <dt>Replacements used</dt>
-                    <dd>{renderStats.replacements}</dd>
-                  </>
-                )}
-              </dl>
-            </div>
-          )}
+        {renderStats && (
+          <div className="run-summary-group">
+            <h4>Rendering</h4>
+            <dl>
+              <dt>Screenshots attempted</dt>
+              <dd>{renderStats.attempted}</dd>
+              <dt>Usable</dt>
+              <dd>{renderStats.successful}</dd>
+              <dt>Weak</dt>
+              <dd>{renderStats.weak}</dd>
+              <dt>Failed</dt>
+              <dd>{renderStats.failed}</dd>
+              {renderStats.replacements > 0 && (
+                <>
+                  <dt>Replacements used</dt>
+                  <dd>{renderStats.replacements}</dd>
+                </>
+              )}
+            </dl>
+          </div>
+        )}
 
-          {curationStats && (
-            <div className="run-summary-group">
-              <h4>Curation</h4>
-              <dl>
-                <dt>Eligible entries</dt>
-                <dd>{curationStats.beforeDedup}</dd>
-                <dt>Final timeline entries</dt>
-                <dd>{curationStats.afterCuration}</dd>
-                <dt>Years represented</dt>
-                <dd>{curationStats.yearsRepresented} of {curationStats.totalYears}</dd>
-                {curationStats.weakOnlyYears > 0 && (
-                  <>
-                    <dt>Years with weak-only captures</dt>
-                    <dd>{curationStats.weakOnlyYears}</dd>
-                  </>
-                )}
-              </dl>
-            </div>
-          )}
-        </div>
-      )}
+        {curationStats && (
+          <div className="run-summary-group">
+            <h4>Curation</h4>
+            <dl>
+              <dt>Eligible entries</dt>
+              <dd>{curationStats.beforeDedup}</dd>
+              <dt>Final timeline entries</dt>
+              <dd>{curationStats.afterCuration}</dd>
+              <dt>Years represented</dt>
+              <dd>{curationStats.yearsRepresented} of {curationStats.totalYears}</dd>
+              {curationStats.weakOnlyYears > 0 && (
+                <>
+                  <dt>Years with weak-only captures</dt>
+                  <dd>{curationStats.weakOnlyYears}</dd>
+                </>
+              )}
+            </dl>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
