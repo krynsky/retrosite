@@ -146,16 +146,12 @@ function normalizeTimelineRequestBody(body) {
   }
 
   const reportTarget = normalizeReportTarget(target);
-  const email = normalizeNotifyEmail(body?.email);
-  const notes = cleanEditableText(body?.notes, "", 1200);
   return {
     id: randomUUID(),
     url: target,
     target: reportTarget.target,
     domain: reportTarget.domain,
     path: reportTarget.path,
-    email,
-    notes,
     status: "new",
     createdAt: new Date().toISOString()
   };

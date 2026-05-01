@@ -149,9 +149,7 @@ test("request-only mode exposes public config and accepts timeline requests", as
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      url: "http://friendfeed.com/krynsky",
-      email: "reader@example.net",
-      notes: "Please include the profile path."
+      url: "http://friendfeed.com/krynsky"
     })
   });
   assert.equal(requestResponse.status, 202);
@@ -159,8 +157,8 @@ test("request-only mode exposes public config and accepts timeline requests", as
   assert.equal(payload.request.target, "friendfeed.com/krynsky");
   assert.equal(payload.request.domain, "friendfeed.com");
   assert.equal(payload.request.path, "/krynsky");
-  assert.equal(payload.request.email, "reader@example.net");
-  assert.equal(payload.request.notes, "Please include the profile path.");
+  assert.equal("email" in payload.request, false);
+  assert.equal("notes" in payload.request, false);
 
   const requestFile = path.join(generatedRoot, "requests", `${payload.request.createdAt.replace(/[:.]/g, "-")}-${payload.request.id}.json`);
   await waitForFile(requestFile);

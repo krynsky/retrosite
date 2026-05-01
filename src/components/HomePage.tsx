@@ -68,8 +68,6 @@ export function HomePage() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState("");
-  const [email, setEmail] = useState("");
-  const [notes, setNotes] = useState("");
   const { config, loaded: configLoaded } = useAppConfig();
   const [recentJobs, setRecentJobs] = useState<ReportJobSummary[]>([]);
   const [recentError, setRecentError] = useState("");
@@ -126,11 +124,7 @@ export function HomePage() {
         const response = await fetch("/api/requests", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            url: domain.trim(),
-            email: email.trim() || undefined,
-            notes: notes.trim()
-          })
+          body: JSON.stringify({ url: domain.trim() })
         });
         const payload = await response.json();
         if (!response.ok) {
@@ -140,8 +134,6 @@ export function HomePage() {
         const requestRecord = payload.request as TimelineRequest;
         setRequestSuccess(`Request saved for ${requestRecord.target}.`);
         setDomain("");
-        setEmail("");
-        setNotes("");
         return;
       }
 
@@ -212,28 +204,6 @@ export function HomePage() {
               required
               aria-label="Domain or path"
             />
-            {requestOnlyMode && (
-              <div className="request-fields">
-                <DomainField
-                  label="EMAIL OPTIONAL"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  aria-label="Email address"
-                />
-                <label className="request-note-field">
-                  <span className="domain-field-legend">NOTES OPTIONAL</span>
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    placeholder="Anything specific to look for?"
-                    aria-label="Timeline request notes"
-                    rows={3}
-                  />
-                </label>
-              </div>
-            )}
             <StampButton
               type="submit"
               tone="primary"

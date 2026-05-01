@@ -164,8 +164,6 @@ export type TimelineRequest = {
   target: string;
   domain: string;
   path: string;
-  email: string | null;
-  notes: string;
   status: "new" | string;
   createdAt: string;
 };

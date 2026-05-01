@@ -26,15 +26,6 @@ function normalizeTarget(input) {
   };
 }
 
-function normalizeEmail(input) {
-  const email = String(input ?? "").trim();
-  if (!email) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("Enter a valid email address.");
-  }
-  return email;
-}
-
 async function createGithubIssue(requestRecord) {
   const repo = process.env.RETROSITE_REQUEST_REPO;
   const token = process.env.GITHUB_TOKEN || process.env.RETROSITE_GITHUB_TOKEN;
@@ -47,11 +38,7 @@ async function createGithubIssue(requestRecord) {
     "",
     `- Target: ${requestRecord.target}`,
     `- Submitted URL: ${requestRecord.url}`,
-    `- Email: ${requestRecord.email ?? "not provided"}`,
-    `- Created: ${requestRecord.createdAt}`,
-    "",
-    "Notes:",
-    requestRecord.notes || "None"
+    `- Created: ${requestRecord.createdAt}`
   ].join("\n");
 
   const githubResponse = await fetch(`https://api.github.com/repos/${repo}/issues`, {
@@ -90,8 +77,6 @@ export default async function handler(request, response) {
     const requestRecord = {
       id: randomUUID(),
       ...target,
-      email: normalizeEmail(body.email),
-      notes: String(body.notes ?? "").trim().slice(0, 1200),
       status: "new",
       createdAt: new Date().toISOString()
     };
