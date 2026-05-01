@@ -2,12 +2,10 @@ node_modules/
 dist/
 .vite/
 .codex-logs/
-.claude/settings.local.json
+.claude/
 server/generated/
-npm-debug.log*
-*.log
 docs/screenshots/
 tmp-*.png
 *.local
-
-.vercel
+*.log
+npm-debug.log*
