@@ -47,8 +47,12 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
       try {
         const versionParam = version != null ? `?version=${version}` : "";
         const response = await fetch(`/api/reports/${encodeURIComponent(domain)}${versionParam}`);
-        const payload = await response.json();
-        if (!response.ok) {
+        if (response.ok) {
+          const payload = await response.json();
+          if (!cancelled) {
+            setJob(payload);
+          }
+        } else {
           if (version == null) {
             const staticResponse = await fetch(`/timelines/${encodeURIComponent(domain)}/timeline.json`);
             if (staticResponse.ok) {
@@ -59,10 +63,8 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
               return;
             }
           }
+          const payload = await response.json().catch(() => ({}));
           throw new Error(payload.error ?? "Unable to load report.");
-        }
-        if (!cancelled) {
-          setJob(payload);
         }
       } catch (caught) {
         if (!cancelled) {
