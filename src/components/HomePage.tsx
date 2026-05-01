@@ -186,16 +186,6 @@ export function HomePage() {
             <MarkerText tone="double">the Wayback Machine</MarkerText>
           </h1>
 
-          <div className="export-feature">
-            <span className="export-feature-disk">
-              <PixelIcon name="disk" size={56} accent="var(--marker-blue)" />
-            </span>
-            <div className="export-feature-label">
-              Export timelines as<br />
-              html and markdown
-            </div>
-          </div>
-
           <form className="domain-block" onSubmit={handleSubmit}>
             <DomainField
               value={domain}
@@ -219,22 +209,34 @@ export function HomePage() {
         </div>
 
         <div className="hero-right">
-          <Polaroid width={540} rotate={-1.2}>
-            <img
-              src={twitterScreenshot}
-              alt="Archived Twitter homepage from 2007"
-              className="hero-photo-img"
-            />
-          </Polaroid>
-          <div className="hero-caption">
-            <MarkerText tone="pink">2007 Vibes</MarkerText>
+          <div className="hero-image-stack">
+            <Polaroid width={540} rotate={-1.2}>
+              <img
+                src={twitterScreenshot}
+                alt="Archived Twitter homepage from 2007"
+                className="hero-photo-img"
+              />
+            </Polaroid>
+            <div className="hero-caption">
+              <MarkerText tone="pink">2007 Vibes</MarkerText>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="recent-section" aria-label="Recent timelines">
         <div className="recent-head">
-          <h2 className="recent-title">Recent Timelines</h2>
+          <div className="recent-title-group">
+            <h2 className="recent-title">Recent Timelines</h2>
+            <div className="export-feature">
+              <span className="export-feature-disk">
+                <PixelIcon name="disk" size={42} accent="var(--marker-blue)" />
+              </span>
+              <div className="export-feature-label">
+                Export timelines as html and markdown
+              </div>
+            </div>
+          </div>
           <span className="recent-meta">{totalSaved} saved</span>
         </div>
 
