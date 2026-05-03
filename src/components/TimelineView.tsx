@@ -1,7 +1,9 @@
-import { CSSProperties, ReactNode, useState, useEffect } from "react";
-import { ArrowUpRight, Images, List, ZoomIn, Maximize2 } from "lucide-react";
+import { ReactNode, useState, useEffect } from "react";
+import { ArrowUpRight, Images, List, Maximize2 } from "lucide-react";
 import type { DraftReportEntry } from "../types";
 import type { TimelineEntry } from "../data/krynskyTimeline";
+import { visibleEntryNotes } from "../helpers";
+import { ScreenshotModal } from "./ScreenshotModal";
 
 type NormalizedEntry = {
   date: string;
@@ -10,9 +12,6 @@ type NormalizedEntry = {
   techStack: string;
   source: string;
   imageUrl: string | null;
-  focusScale?: number;
-  focusOrigin?: string;
-  focusHeight?: string;
   quality?: DraftReportEntry["screenshotQuality"];
   replacementOf?: string | null;
   replacementAttempts?: DraftReportEntry["replacementAttempts"];
@@ -22,13 +21,10 @@ function normalizeSeedEntry(entry: TimelineEntry): NormalizedEntry {
   return {
     date: entry.date,
     title: entry.title,
-    notes: entry.notes,
+    notes: "",
     techStack: entry.techStack,
     source: entry.source,
-    imageUrl: entry.image,
-    focusScale: entry.focusScale,
-    focusOrigin: entry.focusOrigin,
-    focusHeight: entry.focusHeight
+    imageUrl: entry.image
   };
 }
 
@@ -47,7 +43,7 @@ function normalizeGeneratedEntry(entry: DraftReportEntry): NormalizedEntry {
   return {
     date: entry.date,
     title: entry.title,
-    notes: entry.notes,
+    notes: visibleEntryNotes(entry.notes),
     techStack: entry.techStack,
     source: entry.source,
     imageUrl: entry.screenshotUrl,
@@ -77,16 +73,14 @@ export function TimelineView({
     : (generatedEntries ?? []).map(normalizeGeneratedEntry);
 
   const [activeEntryIndex, setActiveEntryIndex] = useState(0);
-  const [imageMode, setImageMode] = useState<"focus" | "full">("focus");
   const [displayMode, setDisplayMode] = useState<"timeline" | "image-only">("timeline");
+  const [fullImage, setFullImage] = useState<{ url: string; alt: string; title: string } | null>(null);
   const activeEntry = entries[Math.min(activeEntryIndex, Math.max(entries.length - 1, 0))] ?? null;
-  const isGenerated = !seedEntries;
-  const focusScale = activeEntry?.focusScale ?? (isGenerated ? 1.6 : 1);
 
   useEffect(() => {
     setActiveEntryIndex(0);
-    setImageMode("focus");
     setDisplayMode("timeline");
+    setFullImage(null);
   }, [seedEntries, generatedEntries]);
 
   if (entries.length === 0) {
@@ -138,7 +132,7 @@ export function TimelineView({
               key={`${entry.date}-${entry.source}`}
               type="button"
               className={index === activeEntryIndex ? "active" : ""}
-              aria-label={`${entry.date.slice(0, 4)} ${entry.title}: ${entry.techStack}`}
+              aria-label={`${entry.date.slice(0, 4)} ${entry.techStack}`}
               onClick={() => setActiveEntryIndex(index)}
             >
               {displayMode === "image-only" ? (
@@ -167,7 +161,7 @@ export function TimelineView({
                 <span>Captured on {activeEntry.date}</span>
                 <dl>
                   <div>
-                    <dt>Tech stack</dt>
+                    <dt>Tech stack / title</dt>
                     <dd>{activeEntry.techStack}</dd>
                   </div>
                   <div>
@@ -179,45 +173,40 @@ export function TimelineView({
                     </dd>
                   </div>
                 </dl>
+                {activeEntry.notes && <p className="timeline-entry-notes">{activeEntry.notes}</p>}
               </div>
               {activeEntry.imageUrl && (
-                <div className="image-mode-toggle" aria-label="Screenshot view mode">
-                  <button
-                    type="button"
-                    className={imageMode === "focus" ? "active" : ""}
-                    onClick={() => setImageMode("focus")}
-                  >
-                    <ZoomIn size={16} />
-                    Focus
-                  </button>
-                  <button
-                    type="button"
-                    className={imageMode === "full" ? "active" : ""}
-                    onClick={() => setImageMode("full")}
-                  >
-                    <Maximize2 size={16} />
-                    Full
-                  </button>
-                </div>
-              )}
-              {activeEntry.imageUrl && (
-                <div
-                  className={`screenshot-frame ${imageMode}`}
-                  style={
-                    {
-                      "--focus-scale": focusScale,
-                      "--focus-origin": activeEntry.focusOrigin ?? "center top",
-                      "--focus-height": activeEntry.focusHeight ?? "42rem"
-                    } as CSSProperties
+                <button
+                  type="button"
+                  className="screenshot-frame screenshot-preview"
+                  aria-label={`View full screenshot for ${activeEntry.date}`}
+                  onClick={() =>
+                    setFullImage({
+                      url: activeEntry.imageUrl!,
+                      alt: `${activeEntry.date} ${activeEntry.techStack}`,
+                      title: `${activeEntry.date} ${activeEntry.techStack}`
+                    })
                   }
                 >
-                  <img src={activeEntry.imageUrl} alt={`${activeEntry.date} ${activeEntry.title}`} />
-                </div>
+                  <img src={activeEntry.imageUrl} alt={`${activeEntry.date} ${activeEntry.techStack}`} />
+                  <span className="screenshot-frame-hint">
+                    <Maximize2 size={16} />
+                    View full
+                  </span>
+                </button>
               )}
             </article>
           </div>
         )}
       </div>
+      {fullImage && (
+        <ScreenshotModal
+          imageUrl={fullImage.url}
+          alt={fullImage.alt}
+          title={fullImage.title}
+          onClose={() => setFullImage(null)}
+        />
+      )}
     </>
   );
 }

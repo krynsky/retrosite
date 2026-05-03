@@ -230,6 +230,20 @@ export function entryQualityDetails(entry: DraftReportEntry) {
   return details;
 }
 
+export function visibleEntryNotes(notes: string | null | undefined) {
+  const cleaned = String(notes ?? "").trim();
+  if (!cleaned) return "";
+
+  const generatedNotePatterns = [
+    /^Rendered candidate selected for the generated draft report\.$/i,
+    /^Rendered, but flagged for review:/i,
+    /^Replacement capture selected after the first \d{4} render looked weak\.$/i,
+    /^Default alternate note\.$/i
+  ];
+
+  return generatedNotePatterns.some((pattern) => pattern.test(cleaned)) ? "" : cleaned;
+}
+
 export function generatedSharePath(job: ReportJob | ReportJobSummary) {
   return `/timeline/${encodeURIComponent(job.host)}/share`;
 }

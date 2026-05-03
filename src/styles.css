@@ -1296,34 +1296,115 @@ dd {
   line-height: 1.4;
 }
 
+.timeline-entry-notes {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .screenshot-frame {
   position: relative;
+  display: block;
+  width: 100%;
+  height: clamp(26rem, 64vh, 42rem);
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--ink);
   background: var(--ink);
   overflow: hidden;
-  border-top: 1px solid var(--ink);
+  cursor: zoom-in;
+  text-align: left;
 }
 
 .screenshot-frame img {
   display: block;
   width: 100%;
   height: auto;
-  transform-origin: var(--focus-origin, center top);
-  transition: transform 180ms ease, opacity 180ms ease;
-}
-
-.screenshot-frame.focus {
-  height: min(72vh, var(--focus-height, 42rem));
-}
-.screenshot-frame.focus img {
-  transform: scale(var(--focus-scale, 1));
-}
-
-.screenshot-frame.full {
-  height: auto;
-  overflow: visible;
-}
-.screenshot-frame.full img {
   transform: none;
+}
+
+.screenshot-frame-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid var(--ink);
+  background: var(--lime);
+  color: var(--ink);
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-stamp);
+}
+
+.screenshot-frame::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 5rem;
+  pointer-events: none;
+  background: linear-gradient(transparent, rgba(22, 20, 18, 0.62));
+}
+
+.screenshot-frame-hint {
+  z-index: 1;
+}
+
+.generated-entry-preview .screenshot-frame {
+  height: clamp(18rem, 48vh, 32rem);
+}
+
+.screenshot-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(22, 20, 18, 0.72);
+}
+
+.screenshot-modal-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(1180px, 96vw);
+  max-height: 92vh;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow-stamp);
+}
+
+.screenshot-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.screenshot-modal-header strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.screenshot-modal-scroll {
+  overflow: auto;
+  background: var(--ink);
+}
+
+.screenshot-modal-scroll img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .entry-quality {
