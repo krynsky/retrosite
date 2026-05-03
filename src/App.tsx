@@ -7,27 +7,27 @@ import { SiteNav } from "./components/SiteNav";
 const demoProcessSteps = [
   {
     number: "01",
-    title: "Request",
-    summary: "Submit a public domain or path you want turned into a timeline.",
-    detail: "The public demo collects timeline requests for review. It does not run browser automation or generate screenshots directly on the hosted site."
+    title: "Browse the showcase",
+    summary: "Explore finished website timelines published by the app author.",
+    detail: "The demo site is a public gallery for selected timelines. Each published page combines Wayback captures, screenshots, source links, and notes into a read-only history of how a site changed over time."
   },
   {
     number: "02",
-    title: "Review",
-    summary: "Requested sites are reviewed before a timeline is created.",
-    detail: "This keeps the demo simple and avoids exposing expensive or fragile screenshot generation to the public internet."
+    title: "Request a timeline",
+    summary: "Suggest a domain or domain/path for a future published timeline.",
+    detail: "Requests go into a review queue instead of generating immediately. This keeps the hosted demo focused, avoids public abuse, and lets each timeline be checked before it appears on the site."
   },
   {
     number: "03",
-    title: "Generate locally",
-    summary: "Approved timelines are generated with the local Retrosite app.",
-    detail: "The local app runs the Wayback discovery, screenshot rendering, curation, editing, and export workflow on a machine that has the required browser tooling."
+    title: "Author publishes updates",
+    summary: "Approved timelines are generated, curated, and promoted into the demo.",
+    detail: "The author runs Retrosite locally, reviews the Wayback captures and screenshots, publishes the finished timeline as static assets, then deploys the update so the new timeline appears in the public gallery."
   },
   {
     number: "04",
-    title: "Publish",
-    summary: "Finished timelines are uploaded to the demo as static pages.",
-    detail: "Published timelines can be browsed on the hosted site, but the hosted site remains read-only."
+    title: "Run your own copy",
+    summary: "Anyone can create their own reports by downloading Retrosite from GitHub.",
+    detail: "Clone or download the app from github.com/krynsky/retrosite, install the dependencies, run it on your own machine, and enter a public domain or path. Your local copy can discover Wayback captures, render screenshots, curate entries, and export a report without depending on the demo site."
   }
 ];
 
@@ -81,8 +81,8 @@ function AboutPage() {
         </span>
         <h1>About the Retrosite demo</h1>
         <p>
-          The hosted Retrosite demo is a read-only gallery and request form. You can browse published website
-          timelines and submit a site request, but timeline generation and editing happen outside the public site.
+          The hosted Retrosite demo is a showcase of website timelines published by the app author. You can browse
+          finished timelines and suggest future ones, while report generation and editing stay in the local app.
         </p>
       </section>
 
@@ -95,30 +95,6 @@ function AboutPage() {
             <p>{step.detail}</p>
           </article>
         ))}
-      </section>
-
-      <section className="about-notes">
-        <div>
-          <h2>What you can do here</h2>
-          <p>
-            Browse published timelines, open Wayback source captures, switch between timeline and image-only views,
-            and submit a request for a future timeline.
-          </p>
-        </div>
-        <div>
-          <h2>What is not available</h2>
-          <p>
-            The demo site does not generate new timelines, render screenshots, edit entries, or run the local report
-            pipeline in your browser.
-          </p>
-        </div>
-        <div>
-          <h2>Why it works this way</h2>
-          <p>
-            Report generation uses browser automation, Wayback replay checks, local files, and screenshot review. Keeping
-            that work local makes the public demo simpler, cheaper, and safer to host.
-          </p>
-        </div>
       </section>
     </main>
   );
