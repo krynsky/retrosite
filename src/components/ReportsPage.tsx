@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import type { ReportJobSummary } from "../types";
 import { useAppConfig } from "../useAppConfig";
+import { seedReportCard } from "../reportCards";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 
@@ -15,13 +16,26 @@ export function ReportsPage() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { config } = useAppConfig();
+  const { config, loaded: configLoaded } = useAppConfig();
   const admin = config.canEditReports;
+  const requestOnlyMode = config.mode === "request-only";
 
   useEffect(() => {
+    if (!configLoaded) {
+      return;
+    }
+
+    if (requestOnlyMode) {
+      setJobs([seedReportCard()]);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setError("");
       try {
         const response = await fetch("/api/reports?limit=50");
         const payload = await response.json();
@@ -35,7 +49,7 @@ export function ReportsPage() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [configLoaded, requestOnlyMode]);
 
   const filtered = jobs.filter((j) => {
     if (search && !j.host.toLowerCase().includes(search.toLowerCase())) return false;
