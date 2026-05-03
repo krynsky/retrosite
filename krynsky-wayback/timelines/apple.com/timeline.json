@@ -6,10 +6,10 @@
   "status": "complete",
   "stage": "complete",
   "progress": 100,
-  "message": "Selected 2017-01-01 screenshot for the 2017 timeline record.",
+  "message": "Selected 1997-04-04 as the apple.com timeline thumbnail.",
   "screenshotLimit": 35,
   "createdAt": "2026-05-03T16:21:45.097Z",
-  "updatedAt": "2026-05-03T16:55:14.970Z",
+  "updatedAt": "2026-05-03T17:12:17.299Z",
   "events": [],
   "discovery": null,
   "report": {
@@ -2884,6 +2884,8 @@
     "generatedShareUrl": "/timeline/apple.com/share",
     "publicationStatus": "draft",
     "publishedAt": null,
+    "thumbnailEntryKey": "19970404064352:http://www.apple.com:80/",
+    "thumbnailUrl": null,
     "runSummary": {
       "discovery": {
         "variants": 6,

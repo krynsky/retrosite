@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-03T16:58:44.580Z",
+  "updatedAt": "2026-05-03T20:08:28.488Z",
   "timelines": [
     {
       "id": "e7fede1f-11f1-4638-8ded-810c6e14469b",
@@ -10,10 +10,10 @@
       "status": "complete",
       "stage": "complete",
       "progress": 100,
-      "message": "Selected 2017-01-01 screenshot for the 2017 timeline record.",
+      "message": "Selected 1997-04-04 as the apple.com timeline thumbnail.",
       "screenshotLimit": 35,
       "createdAt": "2026-05-03T16:21:45.097Z",
-      "updatedAt": "2026-05-03T16:55:14.970Z",
+      "updatedAt": "2026-05-03T17:12:17.299Z",
       "generatedReportUrl": "/timeline/apple.com",
       "generatedShareUrl": "/timeline/apple.com/share",
       "stats": {
@@ -26,7 +26,7 @@
         "selectedCount": 31
       },
       "error": null,
-      "thumbnailUrl": "/timelines/apple.com/screenshots/01-1996-10-22-1996-candidate-homepage.png",
+      "thumbnailUrl": "/timelines/apple.com/screenshots/02-1997-04-04-1997-candidate-homepage.png",
       "notifyEmail": null,
       "notificationStatus": "not_requested",
       "activeJobCount": 0,
