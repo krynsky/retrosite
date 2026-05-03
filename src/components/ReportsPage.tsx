@@ -53,7 +53,7 @@ export function ReportsPage() {
 
   const filtered = jobs.filter((j) => {
     if (search && !j.host.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter !== "all" && j.status !== statusFilter) return false;
+    if (!requestOnlyMode && statusFilter !== "all" && j.status !== statusFilter) return false;
     return true;
   });
 
@@ -91,15 +91,17 @@ export function ReportsPage() {
               placeholder="Search by domain..."
             />
           </label>
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-            aria-label="Filter by status"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s === "all" ? "All statuses" : s}</option>
-            ))}
-          </select>
+          {!requestOnlyMode && (
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+              aria-label="Filter by status"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s === "all" ? "All statuses" : s}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {error && <p className="error-note">{error}</p>}
