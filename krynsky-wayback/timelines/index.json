@@ -1,0 +1,71 @@
+{
+  "updatedAt": "2026-05-03T15:43:34.851Z",
+  "timelines": [
+    {
+      "id": "dc64c3c2-28cc-41c0-aa0a-6f9fcfc3d78d",
+      "storageKey": "paulstamatiou.com",
+      "target": "paulstamatiou.com",
+      "host": "paulstamatiou.com",
+      "version": 1,
+      "status": "complete",
+      "stage": "complete",
+      "progress": 100,
+      "message": "Selected 2025-01-05 screenshot for the 2025 timeline record.",
+      "screenshotLimit": 35,
+      "createdAt": "2026-05-03T03:53:49.128Z",
+      "updatedAt": "2026-05-03T05:10:31.415Z",
+      "generatedReportUrl": "/timeline/paulstamatiou.com",
+      "generatedShareUrl": "/timeline/paulstamatiou.com/share",
+      "stats": {
+        "captureCount": 822,
+        "candidateCount": 88,
+        "yearCount": 22,
+        "range": "2005-2026",
+        "renderedCount": 60,
+        "usableRenderCount": 60,
+        "selectedCount": 18
+      },
+      "error": null,
+      "thumbnailUrl": "/timelines/paulstamatiou.com/screenshots/01-2005-10-19-2005-candidate-homepage.png",
+      "notifyEmail": null,
+      "notificationStatus": "not_requested",
+      "activeJobCount": 0,
+      "maxActiveJobs": 3,
+      "queuePosition": null,
+      "isActiveJob": false
+    },
+    {
+      "id": "6c0bb502-a43b-44b2-8514-5e98837c18a1",
+      "storageKey": "krynsky.com",
+      "target": "krynsky.com",
+      "host": "krynsky.com",
+      "version": 13,
+      "status": "complete",
+      "stage": "complete",
+      "progress": 100,
+      "message": "Selected 1997-04-15 screenshot for the 1997 timeline record.",
+      "screenshotLimit": 35,
+      "createdAt": "2026-04-29T22:32:14.521Z",
+      "updatedAt": "2026-05-01T06:32:06.053Z",
+      "generatedReportUrl": "/timeline/krynsky.com",
+      "generatedShareUrl": "/timeline/krynsky.com/share",
+      "stats": {
+        "captureCount": 251,
+        "candidateCount": 110,
+        "yearCount": 31,
+        "range": "1996-2026",
+        "renderedCount": 63,
+        "usableRenderCount": 51,
+        "selectedCount": 17
+      },
+      "error": null,
+      "thumbnailUrl": "/timelines/krynsky.com/screenshots/01-1997-04-15-1997-candidate-homepage.png",
+      "notifyEmail": null,
+      "notificationStatus": "not_requested",
+      "activeJobCount": 0,
+      "maxActiveJobs": 3,
+      "queuePosition": null,
+      "isActiveJob": false
+    }
+  ]
+}

@@ -81,6 +81,67 @@ function publicTimelineJob(job, entries, exportUrls = {}) {
   };
 }
 
+function publicTimelineSummary(job, slug) {
+  const renderedEntry = job.report?.curatedEntries?.find((entry) => entry.screenshotUrl)
+    ?? job.report?.entries?.find((entry) => entry.screenshotUrl);
+
+  return {
+    id: job.id,
+    storageKey: job.storageKey ?? job.storageSlug ?? slug ?? null,
+    target: job.target,
+    host: job.host,
+    version: job.version ?? 1,
+    status: job.status,
+    stage: job.stage,
+    progress: job.progress,
+    message: job.message,
+    screenshotLimit: job.screenshotLimit,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    generatedReportUrl: job.report?.generatedReportUrl ?? `/timeline/${encodeURIComponent(job.host)}`,
+    generatedShareUrl: job.report?.generatedShareUrl ?? `/timeline/${encodeURIComponent(job.host)}/share`,
+    stats: job.report?.stats ?? null,
+    error: job.error ?? null,
+    thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
+    notifyEmail: null,
+    notificationStatus: "not_requested",
+    activeJobCount: 0,
+    maxActiveJobs: 3,
+    queuePosition: null,
+    isActiveJob: false
+  };
+}
+
+async function writePublishedTimelineIndex() {
+  const dirs = await readdir(publicTimelinesRoot, { withFileTypes: true }).catch(() => []);
+  const timelines = [];
+
+  for (const dirent of dirs) {
+    if (!dirent.isDirectory()) continue;
+    try {
+      const slug = dirent.name;
+      const timelineFile = path.join(publicTimelinesRoot, slug, "timeline.json");
+      const job = JSON.parse(await readFile(timelineFile, "utf8"));
+      if (job?.report?.curatedEntries?.length || job?.report?.entries?.length) {
+        timelines.push(publicTimelineSummary(job, slug));
+      }
+    } catch {
+      // Ignore incomplete or malformed published timeline folders.
+    }
+  }
+
+  timelines.sort((a, b) =>
+    String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""))
+    || String(a.host ?? "").localeCompare(String(b.host ?? ""))
+  );
+
+  await writeFile(
+    path.join(publicTimelinesRoot, "index.json"),
+    JSON.stringify({ updatedAt: new Date().toISOString(), timelines }, null, 2),
+    "utf8"
+  );
+}
+
 function buildRunSummary(job, entries, curatedEntries = entries) {
   const curated = curatedEntries.length ? curatedEntries : entries;
   const discovery = job.discovery
@@ -134,7 +195,12 @@ function buildRunSummary(job, entries, curatedEntries = entries) {
 
 async function readJob(jobDir) {
   const file = path.join(jobDir, "job.json");
-  return JSON.parse(await readFile(file, "utf8"));
+  const job = JSON.parse(await readFile(file, "utf8"));
+  const folderName = path.basename(jobDir);
+  if (job?.id && !job.storageKey && !job.storageSlug && folderName !== job.id) {
+    job.storageKey = folderName;
+  }
+  return job;
 }
 
 async function findJob(selector) {
@@ -235,9 +301,14 @@ async function buildKrynskySeedJob() {
 
 function localScreenshotPath(job, screenshotUrl) {
   if (!screenshotUrl) return null;
-  const prefix = `/generated/reports/${job.id}/`;
+  const storageKey = job.storageKey ?? job.storageSlug ?? job.id;
+  const prefix = `/generated/reports/${storageKey}/`;
   if (screenshotUrl.startsWith(prefix)) {
-    return path.join(generatedRoot, "reports", job.id, screenshotUrl.slice(prefix.length));
+    return path.join(generatedRoot, "reports", storageKey, screenshotUrl.slice(prefix.length));
+  }
+  const legacyPrefix = `/generated/reports/${job.id}/`;
+  if (legacyPrefix !== prefix && screenshotUrl.startsWith(legacyPrefix)) {
+    return path.join(generatedRoot, "reports", job.id, screenshotUrl.slice(legacyPrefix.length));
   }
   if (screenshotUrl.startsWith("/")) {
     return path.join(vitePublicRoot, screenshotUrl.slice(1));
@@ -563,8 +634,10 @@ async function main() {
 
   const publishedJob = publicTimelineJob(job, entries, exportUrls);
   await writeFile(path.join(outDir, "timeline.json"), JSON.stringify(publishedJob, null, 2), "utf8");
+  await writePublishedTimelineIndex();
   console.log(`Published ${job.host} to /timelines/${slug}/timeline.json`);
   console.log(`Published exports to /timelines/${slug}/${markdownFilename} and /timelines/${slug}/${htmlFilename}`);
+  console.log("Updated /timelines/index.json");
 }
 
 main().catch((error) => {

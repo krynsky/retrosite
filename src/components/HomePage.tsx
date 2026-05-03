@@ -41,11 +41,36 @@ export function HomePage() {
   const isAdmin = config.canEditReports;
 
   useEffect(() => {
-    if (!configLoaded || requestOnlyMode) {
+    if (!configLoaded) {
       return;
     }
 
     let cancelled = false;
+
+    if (requestOnlyMode) {
+      async function loadPublishedTimelines() {
+        try {
+          const response = await fetch("/timelines/index.json");
+          if (!response.ok) {
+            throw new Error("Published timeline index was not found.");
+          }
+          const payload = await response.json();
+          if (!cancelled) {
+            setRecentJobs(Array.isArray(payload.timelines) ? payload.timelines : []);
+            setRecentError("");
+          }
+        } catch {
+          if (!cancelled) {
+            setRecentJobs([]);
+          }
+        }
+      }
+
+      void loadPublishedTimelines();
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadRecentJobs() {
       try {

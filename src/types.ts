@@ -120,6 +120,7 @@ export type ReportVersionSummary = {
 
 export type ReportJob = {
   id: string;
+  storageKey?: string | null;
   target: string;
   host: string;
   version?: number;
@@ -148,6 +149,7 @@ export type ReportJob = {
 
 export type ReportJobSummary = {
   id: string;
+  storageKey?: string | null;
   target: string;
   host: string;
   version?: number;

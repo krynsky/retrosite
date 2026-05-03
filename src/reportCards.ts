@@ -1,5 +1,5 @@
 import { krynskyTimeline } from "./data/krynskyTimeline";
-import type { ReportJobSummary } from "./types";
+import type { ReportJob, ReportJobSummary } from "./types";
 
 export function seedReportCard(): ReportJobSummary {
   const first = krynskyTimeline[0];
@@ -36,5 +36,36 @@ export function seedReportCard(): ReportJobSummary {
     maxActiveJobs: 3,
     queuePosition: null,
     isActiveJob: false
+  };
+}
+
+export function reportJobToSummary(job: ReportJob): ReportJobSummary {
+  const renderedEntry = job.report?.curatedEntries?.find((entry) => entry.screenshotUrl)
+    ?? job.report?.entries?.find((entry) => entry.screenshotUrl);
+
+  return {
+    id: job.id,
+    storageKey: job.storageKey,
+    target: job.target,
+    host: job.host,
+    version: job.version,
+    status: job.status,
+    stage: job.stage,
+    progress: job.progress,
+    message: job.message,
+    screenshotLimit: job.screenshotLimit,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    generatedReportUrl: job.report?.generatedReportUrl ?? `/timeline/${encodeURIComponent(job.host)}`,
+    generatedShareUrl: job.report?.generatedShareUrl ?? `/timeline/${encodeURIComponent(job.host)}/share`,
+    stats: job.report?.stats ?? null,
+    error: job.error,
+    thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
+    notifyEmail: null,
+    notificationStatus: job.notificationStatus,
+    activeJobCount: job.activeJobCount,
+    maxActiveJobs: job.maxActiveJobs,
+    queuePosition: job.queuePosition,
+    isActiveJob: job.isActiveJob
   };
 }

@@ -25,14 +25,36 @@ export function ReportsPage() {
       return;
     }
 
+    let cancelled = false;
+
     if (requestOnlyMode) {
-      setJobs([seedReportCard()]);
-      setError("");
-      setLoading(false);
-      return;
+      async function loadPublishedTimelines() {
+        setLoading(true);
+        setError("");
+        try {
+          const response = await fetch("/timelines/index.json");
+          if (!response.ok) {
+            throw new Error("Published timeline index was not found.");
+          }
+          const payload = await response.json();
+          if (!cancelled) {
+            const publishedJobs = Array.isArray(payload.timelines) ? payload.timelines : [];
+            setJobs(publishedJobs.length > 0 ? publishedJobs : [seedReportCard()]);
+          }
+        } catch {
+          if (!cancelled) {
+            setJobs([seedReportCard()]);
+          }
+        } finally {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        }
+      }
+      void loadPublishedTimelines();
+      return () => { cancelled = true; };
     }
 
-    let cancelled = false;
     async function load() {
       setLoading(true);
       setError("");
