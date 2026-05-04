@@ -80,8 +80,7 @@ export function downloadText(filename: string, text: string) {
 }
 
 export function summarizeJob(job: ReportJob): ReportJobSummary {
-  const renderedEntry = job.report?.curatedEntries?.find((entry) => entry.screenshotUrl)
-    ?? job.report?.entries.find((entry) => entry.screenshotUrl);
+  const renderedEntry = thumbnailEntry(job);
 
   return {
     id: job.id,
@@ -91,14 +90,16 @@ export function summarizeJob(job: ReportJob): ReportJobSummary {
     stage: job.stage,
     progress: job.progress,
     message: job.message,
+    depthMode: job.depthMode ?? "adaptive",
     screenshotLimit: job.screenshotLimit ?? 5,
+    archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: job.report?.generatedReportUrl ?? null,
-    generatedShareUrl: job.report?.generatedShareUrl ?? (job.report?.generatedReportUrl ? `${job.report.generatedReportUrl}/share` : null),
+    generatedReportUrl: timelinePath(job.host),
+    generatedShareUrl: generatedSharePath(job),
     stats: job.report?.stats ?? null,
     error: job.error,
-    thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
+    thumbnailUrl: renderedEntry?.screenshotUrl ?? job.report?.thumbnailUrl ?? null,
     notifyEmail: job.notifyEmail ?? null,
     notificationStatus: job.notificationStatus ?? "not_requested",
     activeJobCount: job.activeJobCount ?? 0,
@@ -106,6 +107,15 @@ export function summarizeJob(job: ReportJob): ReportJobSummary {
     queuePosition: job.queuePosition ?? null,
     isActiveJob: Boolean(job.isActiveJob)
   };
+}
+
+export function thumbnailEntry(job: Pick<ReportJob, "report">) {
+  const report = job.report;
+  const entries = [...(report?.curatedEntries ?? []), ...(report?.entries ?? [])];
+  const thumbnailKey = report?.thumbnailEntryKey ?? "";
+  return entries.find((entry) => thumbnailKey && reportEntryKey(entry) === thumbnailKey && entry.screenshotUrl)
+    ?? entries.find((entry) => entry.screenshotUrl)
+    ?? null;
 }
 
 export function formatJobTime(value: string) {
@@ -158,18 +168,18 @@ export function canRetryJob(job: Pick<ReportJob | ReportJobSummary, "status">) {
 
 export function reportFailureHint(error: string | null) {
   if (!error) {
-    return "Retry the report. If it fails again, try a lower depth or a different homepage variant.";
+    return "Retry the report. If it fails again, use Quick depth or a different homepage variant.";
   }
 
   if (/timed out|fetch failed|Wayback CDX/i.test(error)) {
-    return "The Wayback index was slow or unreachable. Retry usually works; use Quick depth if the domain has a large archive.";
+    return "The Wayback index was slow or unreachable. Retry usually works; use Quick depth for very large archives or Adaptive depth so Retrosite can reduce the budget automatically.";
   }
 
   if (/No homepage captures|No captures/i.test(error)) {
     return "Retrosite could not find exact homepage captures for this domain. Try the canonical domain without paths or subdomains.";
   }
 
-  return "Retry the report. If it fails again, lower the depth and keep the failed job details for debugging.";
+  return "Retry the report. If it fails again, use Quick depth and keep the failed job details for debugging.";
 }
 
 export function queueProgressText(job: Pick<ReportJob | ReportJobSummary, "activeJobCount" | "queuePosition" | "progress">) {

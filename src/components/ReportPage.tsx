@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Clipboard, FileText, Loader2, RefreshCw } from "lucide-react";
-import { krynskyTimeline } from "../data/krynskyTimeline";
+import { useEffect, useState } from "react";
+import { Clipboard, FileText, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import type { ReportJob, ReportVersionSummary } from "../types";
 import {
   absoluteAppUrl,
@@ -18,17 +17,7 @@ import { RunSummary } from "./RunSummary";
 import { TimelineView } from "./TimelineView";
 import { AdminControls } from "./AdminControls";
 
-function useSeedReportRange() {
-  return useMemo(() => {
-    const first = krynskyTimeline[0].date.slice(0, 4);
-    const last = krynskyTimeline[krynskyTimeline.length - 1].date.slice(0, 4);
-    return `${first} – ${last}`;
-  }, []);
-}
-
 export function ReportPage({ domain, version }: { domain: string; version?: number }) {
-  const seedRange = useSeedReportRange();
-
   const [job, setJob] = useState<ReportJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
@@ -37,12 +26,15 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const [shareCopyMessage, setShareCopyMessage] = useState("");
   const [versions, setVersions] = useState<ReportVersionSummary[]>([]);
   const [rerunning, setRerunning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deletingVersionId, setDeletingVersionId] = useState("");
   const { config } = useAppConfig();
 
   const isRunning = job?.status === "queued" || job?.status === "running";
   const entries = job?.report?.curatedEntries ?? [];
   const hasEntries = entries.length > 0;
   const isAdmin = config.canEditReports;
+  const isDemoSite = config.mode === "request-only";
   const staticMarkdownExport = job?.report?.exports?.markdownUrl;
   const staticHtmlExport = job?.report?.exports?.htmlUrl;
 
@@ -163,6 +155,41 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
     }
   }
 
+  async function deleteReportById(reportId: string, options?: { current?: boolean }) {
+    if (!window.confirm("Delete this report? This cannot be undone.")) return;
+    if (options?.current) {
+      setDeleting(true);
+    } else {
+      setDeletingVersionId(reportId);
+    }
+    setActionError("");
+    try {
+      const response = await fetch(`/api/reports/${reportId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Unable to delete report.");
+      }
+      if (options?.current || job?.id === reportId) {
+        window.location.assign(timelinePath(domain));
+        return;
+      }
+      setVersions((currentVersions) => currentVersions.filter((versionItem) => versionItem.id !== reportId));
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to delete report.");
+    } finally {
+      if (options?.current) {
+        setDeleting(false);
+      } else {
+        setDeletingVersionId("");
+      }
+    }
+  }
+
+  async function deleteReport() {
+    if (!job) return;
+    await deleteReportById(job.id, { current: true });
+  }
+
   async function copyShareLink() {
     if (!job) return;
     setShareCopyMessage("");
@@ -175,12 +202,51 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
     }
   }
 
-  const isSeedView = job?.id === "krynsky-com-seed" && !hasEntries;
   const reportDomain = job?.host ?? "";
-  const reportRange = isSeedView ? seedRange : (job?.report?.stats.range.replace("-", " – ") ?? "");
+  const reportRange = job?.report?.stats.range.replace("-", " - ") ?? "";
 
   const isLatestVersion = version == null;
   const jobIsTerminal = job && !isRunning;
+  const canManageReport = isAdmin && jobIsTerminal;
+  const versionHistory = isAdmin && versions.length > 1 && (
+    <div className="version-history">
+      <h3>Version history</h3>
+      <div className="version-list">
+        {versions.map((v) => {
+          const isCurrent = (job?.version ?? 1) === v.version;
+          const isVersionActive = v.status === "queued" || v.status === "running";
+          const canDeleteVersion = !isVersionActive;
+          const versionUrl = v.version === versions[0].version
+            ? timelinePath(domain)
+            : `${timelinePath(domain)}/v/${v.version}`;
+          return (
+            <div key={v.version} className="version-row">
+              <a
+                href={versionUrl}
+                className={`version-item${isCurrent ? " active" : ""}`}
+              >
+                <strong>v{v.version}</strong>
+                <span className="version-status">{v.status}</span>
+                <span>{v.entryCount} entries</span>
+                <span>{new Date(v.createdAt).toLocaleDateString()}</span>
+              </a>
+              {canDeleteVersion && (
+                <button
+                  type="button"
+                  className="ghost-link compact version-delete"
+                  disabled={Boolean(deletingVersionId) || deleting}
+                  onClick={() => void deleteReportById(v.id)}
+                >
+                  {deletingVersionId === v.id ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                  Delete
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <main className="page paper-bg">
@@ -203,29 +269,37 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
           </p>
         )}
 
-        {job && !isSeedView && (isRunning || !job.report) && (
-          <JobProgress
-            job={job}
-            isAdmin={isAdmin}
-            canceling={actionSaving}
-            onCancel={() => void cancelJob()}
-            retrying={actionSaving}
-            onRetry={() => void retryJob()}
-            showActions={true}
-          />
+        {job && (isRunning || !job.report) && (
+          <>
+            <JobProgress
+              job={job}
+              isAdmin={isAdmin}
+              canceling={actionSaving}
+              onCancel={() => void cancelJob()}
+              retrying={actionSaving}
+              onRetry={() => void retryJob()}
+              showActions={true}
+            />
+            {canManageReport && (
+              <div className="generated-actions inline-actions report-admin-actions">
+                <button
+                  type="button"
+                  className="ghost-link compact"
+                  disabled={deleting}
+                  onClick={() => void deleteReport()}
+                >
+                  {deleting ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                  Delete report
+                </button>
+              </div>
+            )}
+            {versionHistory}
+          </>
         )}
 
         {actionError && <p className="error-note">{actionError}</p>}
 
-        {job && isSeedView && (
-          <TimelineView
-            domain={reportDomain}
-            range={reportRange}
-            seedEntries={krynskyTimeline}
-          />
-        )}
-
-        {job && !isSeedView && hasEntries && (
+        {job && hasEntries && (
           <>
             <TimelineView
               domain={reportDomain}
@@ -242,20 +316,35 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
                     <FileText size={16} />
                     Export HTML
                   </a>
-                  <button type="button" className="primary-link compact" onClick={() => void copyShareLink()}>
-                    <Clipboard size={16} />
-                    Copy share link
-                  </button>
-                  {isAdmin && jobIsTerminal && isLatestVersion && (
-                    <button
-                      type="button"
-                      className="primary-link compact"
-                      disabled={rerunning}
-                      onClick={() => void rerunReport()}
-                    >
-                      {rerunning ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                      Re-run report
+                  {isDemoSite && (
+                    <button type="button" className="primary-link compact" onClick={() => void copyShareLink()}>
+                      <Clipboard size={16} />
+                      Copy share link
                     </button>
+                  )}
+                  {canManageReport && (
+                    <>
+                      {isLatestVersion && (
+                        <button
+                          type="button"
+                          className="primary-link compact"
+                          disabled={rerunning || deleting}
+                          onClick={() => void rerunReport()}
+                        >
+                          {rerunning ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+                          Re-run report
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="ghost-link compact"
+                        disabled={deleting || rerunning}
+                        onClick={() => void deleteReport()}
+                      >
+                        {deleting ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                        Delete report
+                      </button>
+                    </>
                   )}
                 </>
               }
@@ -264,31 +353,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
 
             <RunSummary job={job} isAdmin={isAdmin} />
 
-            {isAdmin && versions.length > 1 && (
-              <div className="version-history">
-                <h3>Version history</h3>
-                <div className="version-list">
-                  {versions.map((v) => {
-                    const isCurrent = (job.version ?? 1) === v.version;
-                    const versionUrl = v.version === versions[0].version
-                      ? timelinePath(domain)
-                      : `${timelinePath(domain)}/v/${v.version}`;
-                    return (
-                      <a
-                        key={v.version}
-                        href={versionUrl}
-                        className={`version-item${isCurrent ? " active" : ""}`}
-                      >
-                        <strong>v{v.version}</strong>
-                        <span className="version-status">{v.status}</span>
-                        <span>{v.entryCount} entries</span>
-                        <span>{new Date(v.createdAt).toLocaleDateString()}</span>
-                      </a>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {versionHistory}
 
             {isAdmin && (
               <AdminControls job={job} onJobChange={setJob} />
@@ -299,3 +364,4 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
     </main>
   );
 }
+

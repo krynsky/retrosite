@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import type { ReportJobSummary } from "../types";
 import { useAppConfig } from "../useAppConfig";
-import { seedReportCard } from "../reportCards";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 
@@ -39,11 +38,11 @@ export function ReportsPage() {
           const payload = await response.json();
           if (!cancelled) {
             const publishedJobs = Array.isArray(payload.timelines) ? payload.timelines : [];
-            setJobs(publishedJobs.length > 0 ? publishedJobs : [seedReportCard()]);
+            setJobs(publishedJobs);
           }
         } catch {
           if (!cancelled) {
-            setJobs([seedReportCard()]);
+            setJobs([]);
           }
         } finally {
           if (!cancelled) {

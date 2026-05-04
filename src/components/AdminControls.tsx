@@ -1,7 +1,8 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Maximize2, Sparkles, ZoomIn } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowUpRight, Maximize2 } from "lucide-react";
 import type { ReportJob, DraftReportEntry } from "../types";
-import { reportEntryKey, entryQualityLabel, entryQualityTone, entryQualityDetails } from "../helpers";
+import { reportEntryKey, entryQualityLabel, entryQualityTone, entryQualityDetails, visibleEntryNotes } from "../helpers";
+import { ScreenshotModal } from "./ScreenshotModal";
 
 function entryYear(entry: DraftReportEntry) {
   return entry.date.slice(0, 4);
@@ -31,13 +32,8 @@ export function AdminControls({
   const [curationSavingKey, setCurationSavingKey] = useState("");
   const [curationError, setCurationError] = useState("");
   const [editingEntryKey, setEditingEntryKey] = useState("");
-  const [entryDraft, setEntryDraft] = useState({ title: "", notes: "", techStack: "" });
-  const [editingReport, setEditingReport] = useState(false);
-  const [reportDraft, setReportDraft] = useState({ title: "", summary: "" });
-  const [reportSaving, setReportSaving] = useState(false);
-  const [reportError, setReportError] = useState("");
-  const [deleting, setDeleting] = useState(false);
-  const [entryImageModes, setEntryImageModes] = useState<Record<string, "focus" | "full">>({});
+  const [entryDraft, setEntryDraft] = useState({ notes: "", techStack: "" });
+  const [fullImage, setFullImage] = useState<{ url: string; alt: string; title: string } | null>(null);
 
   const selectedEntries = job.report?.curatedEntries ?? [];
   const selectedEntriesByYear = useMemo(
@@ -83,7 +79,7 @@ export function AdminControls({
   async function updateEntryCuration(
     entry: DraftReportEntry,
     included?: boolean,
-    edits?: Pick<DraftReportEntry, "title" | "notes" | "techStack">,
+    edits?: Pick<DraftReportEntry, "notes" | "techStack">,
     options?: { replaceSelectedYear?: boolean }
   ) {
     const key = reportEntryKey(entry);
@@ -97,7 +93,7 @@ export function AdminControls({
           timestamp: entry.timestamp,
           original: entry.original,
           ...(typeof included === "boolean" ? { included } : {}),
-          ...(edits ? { title: edits.title, notes: edits.notes, techStack: edits.techStack } : {}),
+          ...(edits ? { notes: edits.notes, techStack: edits.techStack } : {}),
           ...(options?.replaceSelectedYear ? { replaceSelectedYear: true } : {})
         })
       });
@@ -118,83 +114,42 @@ export function AdminControls({
 
   function startEntryEdit(entry: DraftReportEntry) {
     setEditingEntryKey(reportEntryKey(entry));
-    setEntryDraft({ title: entry.title, notes: entry.notes, techStack: entry.techStack });
+    setEntryDraft({ notes: visibleEntryNotes(entry.notes), techStack: entry.techStack });
     setCurationError("");
   }
 
   function cancelEntryEdit() {
     setEditingEntryKey("");
-    setEntryDraft({ title: "", notes: "", techStack: "" });
+    setEntryDraft({ notes: "", techStack: "" });
   }
 
   async function saveEntryEdit(entry: DraftReportEntry) {
     await updateEntryCuration(entry, undefined, entryDraft);
   }
 
-  function entryImageMode(year: string) {
-    return entryImageModes[year] ?? "focus";
-  }
-
-  function setEntryImageMode(year: string, mode: "focus" | "full") {
-    setEntryImageModes((modes) => ({ ...modes, [year]: mode }));
-  }
-
-  function startReportEdit() {
-    if (!job.report) return;
-    setEditingReport(true);
-    setReportDraft({ title: job.report.title, summary: job.report.summary });
-    setReportError("");
-  }
-
-  function cancelReportEdit() {
-    setEditingReport(false);
-    setReportDraft({ title: "", summary: "" });
-  }
-
-  async function updateReportDetails(patch: {
-    title?: string;
-    summary?: string;
-    publicationStatus?: "draft" | "published";
-  }) {
-    setReportSaving(true);
-    setReportError("");
+  async function setEntryThumbnail(entry: DraftReportEntry) {
+    const key = reportEntryKey(entry);
+    setCurationSavingKey(key);
+    setCurationError("");
     try {
-      const response = await fetch(`/api/reports/${job.id}`, {
+      const response = await fetch(`/api/reports/${job.id}/entries`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch)
+        body: JSON.stringify({
+          timestamp: entry.timestamp,
+          original: entry.original,
+          thumbnail: true
+        })
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to update report details.");
+        throw new Error(payload.error ?? "Unable to update timeline thumbnail.");
       }
       onJobChange(payload);
-      setEditingReport(false);
     } catch (caught) {
-      setReportError(caught instanceof Error ? caught.message : "Unable to update report details.");
+      setCurationError(caught instanceof Error ? caught.message : "Unable to update timeline thumbnail.");
     } finally {
-      setReportSaving(false);
-    }
-  }
-
-  async function saveReportEdit() {
-    await updateReportDetails(reportDraft);
-  }
-
-  async function deleteReport() {
-    if (!window.confirm("Delete this report? This cannot be undone.")) return;
-    setDeleting(true);
-    setReportError("");
-    try {
-      const response = await fetch(`/api/reports/${job.id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error ?? "Unable to delete report.");
-      }
-      window.location.assign("/");
-    } catch (caught) {
-      setReportError(caught instanceof Error ? caught.message : "Unable to delete report.");
-      setDeleting(false);
+      setCurationSavingKey("");
     }
   }
 
@@ -204,91 +159,6 @@ export function AdminControls({
 
   return (
     <section className="admin-controls" aria-label="Admin controls">
-      <div className="section-heading generated-report-heading">
-        <span className="eyebrow">
-          <Sparkles size={16} />
-          {job.status === "incomplete"
-            ? "Needs review"
-            : job.report.publicationStatus === "published"
-              ? "Published report"
-              : "Generated draft"}
-        </span>
-        {editingReport ? (
-          <div className="report-edit-form">
-            <label>
-              Report title
-              <input
-                value={reportDraft.title}
-                onChange={(event) => setReportDraft((draft) => ({ ...draft, title: event.target.value }))}
-                maxLength={140}
-              />
-            </label>
-            <label>
-              Summary
-              <textarea
-                value={reportDraft.summary}
-                onChange={(event) => setReportDraft((draft) => ({ ...draft, summary: event.target.value }))}
-                rows={4}
-                maxLength={500}
-              />
-            </label>
-          </div>
-        ) : (
-          <>
-            <h2>{job.report.title}</h2>
-            <p>{job.report.summary}</p>
-          </>
-        )}
-      </div>
-
-      <div className="generated-actions">
-        {editingReport ? (
-          <>
-            <button
-              type="button"
-              className="primary-link compact"
-              disabled={reportSaving}
-              onClick={() => void saveReportEdit()}
-            >
-              Save report
-            </button>
-            <button
-              type="button"
-              className="ghost-link compact"
-              disabled={reportSaving}
-              onClick={cancelReportEdit}
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button type="button" className="ghost-link compact" disabled={reportSaving} onClick={startReportEdit}>
-            Edit report
-          </button>
-        )}
-        <button
-          type="button"
-          className="primary-link compact"
-          disabled={reportSaving || selectedEntries.length === 0 || job.status === "incomplete"}
-          onClick={() =>
-            void updateReportDetails({
-              publicationStatus: job.report!.publicationStatus === "published" ? "draft" : "published"
-            })
-          }
-        >
-          {job.report.publicationStatus === "published" ? "Return to draft" : "Publish draft"}
-        </button>
-        <button
-          type="button"
-          className="ghost-link compact"
-          disabled={deleting || reportSaving}
-          onClick={() => void deleteReport()}
-        >
-          Delete report
-        </button>
-      </div>
-
-      {reportError && <p className="error-note">{reportError}</p>}
       {curationError && <p className="error-note">{curationError}</p>}
 
       <div className="generated-entry-list">
@@ -302,6 +172,7 @@ export function AdminControls({
           const saving = curationSavingKey === key;
           const editing = editingEntryKey === key;
           const qualityDetails = entryQualityDetails(entry);
+          const isThumbnail = Boolean(job.report?.thumbnailEntryKey && job.report.thumbnailEntryKey === key);
           return (
             <article
               key={year}
@@ -313,15 +184,7 @@ export function AdminControls({
                 {editing ? (
                   <div className="entry-edit-form">
                     <label>
-                      Title
-                      <input
-                        value={entryDraft.title}
-                        onChange={(event) => setEntryDraft((draft) => ({ ...draft, title: event.target.value }))}
-                        maxLength={140}
-                      />
-                    </label>
-                    <label>
-                      Tech stack
+                      Tech stack / title
                       <input
                         value={entryDraft.techStack}
                         onChange={(event) =>
@@ -342,14 +205,13 @@ export function AdminControls({
                   </div>
                 ) : (
                   <>
-                    <h3>{entry.title}</h3>
                     <dl className="generated-entry-meta">
                       <div>
-                        <dt>Tech stack</dt>
+                        <dt>Tech stack / title</dt>
                         <dd>{entry.techStack}</dd>
                       </div>
                     </dl>
-                    <p>{entry.notes}</p>
+                    {visibleEntryNotes(entry.notes) && <p>{visibleEntryNotes(entry.notes)}</p>}
                   </>
                 )}
                 <div className="entry-screenshot-choices">
@@ -434,48 +296,54 @@ export function AdminControls({
                       >
                         {included ? "Exclude" : "Include"}
                       </button>
+                      {included && entry.screenshotUrl && (
+                        <button
+                          type="button"
+                          className="ghost-link compact"
+                          disabled={saving || isThumbnail}
+                          onClick={() => void setEntryThumbnail(entry)}
+                        >
+                          {isThumbnail ? "Thumbnail" : "Use as thumbnail"}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
               </div>
               {entry.screenshotUrl && (
                 <div className="generated-entry-preview">
-                  <div className="image-mode-toggle edit-image-mode-toggle" aria-label={`${year} screenshot view mode`}>
-                    <button
-                      type="button"
-                      className={entryImageMode(year) === "focus" ? "active" : ""}
-                      onClick={() => setEntryImageMode(year, "focus")}
-                    >
-                      <ZoomIn size={16} />
-                      Focus
-                    </button>
-                    <button
-                      type="button"
-                      className={entryImageMode(year) === "full" ? "active" : ""}
-                      onClick={() => setEntryImageMode(year, "full")}
-                    >
-                      <Maximize2 size={16} />
-                      Full
-                    </button>
-                  </div>
-                  <div
-                    className={`screenshot-frame ${entryImageMode(year)}`}
-                    style={
-                      {
-                        "--focus-scale": 1,
-                        "--focus-origin": "center top",
-                        "--focus-height": "32rem"
-                      } as CSSProperties
+                  <button
+                    type="button"
+                    className="screenshot-frame screenshot-preview"
+                    aria-label={`View full screenshot for ${entry.date}`}
+                    onClick={() =>
+                      setFullImage({
+                        url: entry.screenshotUrl!,
+                        alt: `${entry.date} rendered capture`,
+                        title: `${entry.date} ${entry.techStack}`
+                      })
                     }
                   >
                     <img src={entry.screenshotUrl} alt={`${entry.date} rendered capture`} />
-                  </div>
+                    <span className="screenshot-frame-hint">
+                      <Maximize2 size={16} />
+                      View full
+                    </span>
+                  </button>
                 </div>
               )}
             </article>
           );
         })}
       </div>
+      {fullImage && (
+        <ScreenshotModal
+          imageUrl={fullImage.url}
+          alt={fullImage.alt}
+          title={fullImage.title}
+          onClose={() => setFullImage(null)}
+        />
+      )}
     </section>
   );
 }

@@ -80,6 +80,7 @@ function computeStats(job: ReportJob) {
 
 export function RunSummary({ job }: { job: ReportJob; isAdmin?: boolean }) {
   const { discoveryStats, renderStats, curationStats } = computeStats(job);
+  const archiveProfile = job.archiveProfile;
 
   if (!discoveryStats && !renderStats && !curationStats) return null;
 
@@ -108,6 +109,12 @@ export function RunSummary({ job }: { job: ReportJob; isAdmin?: boolean }) {
           <div className="run-summary-group">
             <h4>Rendering</h4>
             <dl>
+              {archiveProfile && (
+                <>
+                  <dt>Depth</dt>
+                  <dd>{archiveProfile.depthMode} ({archiveProfile.archiveSize})</dd>
+                </>
+              )}
               <dt>Screenshots attempted</dt>
               <dd>{renderStats.attempted}</dd>
               <dt>Usable</dt>

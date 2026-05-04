@@ -20,6 +20,8 @@ const userSteps = [
   { id: "curating", label: "Curate", description: "Building your timeline…" }
 ];
 
+const adminStageSteps = reportStageSteps.filter((step) => step.id !== "queued");
+
 function userStepState(jobStage: string, jobStatus: string, stepId: string): "done" | "active" | "pending" {
   if (jobStatus === "failed") {
     return stepId === jobStage ? "active" : "pending";
@@ -111,8 +113,19 @@ export function JobProgress({
             <span>{queueProgressText(job)}</span>
           </div>
 
+          {job.archiveProfile && (
+            <div className="job-depth-summary">
+              <strong>{job.archiveProfile.depthMode} depth</strong>
+              <span>
+                {job.archiveProfile.captureCount.toLocaleString()} captures, {job.archiveProfile.archiveSize} archive,
+                rendering up to {job.archiveProfile.screenshotLimit} final screenshots.
+              </span>
+              <span>{job.archiveProfile.reason}</span>
+            </div>
+          )}
+
           <div className="job-stage-list" aria-label="Report job stages">
-            {reportStageSteps.map((step) => {
+            {adminStageSteps.map((step) => {
               const stageUpdates = stageEventsForJob(job, step.id);
 
               return (
