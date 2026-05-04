@@ -12,7 +12,7 @@ import { DomainField } from "./primitives/DomainField";
 import { StampButton } from "./primitives/StampButton";
 import { PixelIcon } from "./primitives/PixelIcon";
 
-const HOME_CARD_LIMIT = 3;
+const HOME_CARD_LIMIT = 6;
 
 function PixelArrow() {
   return (

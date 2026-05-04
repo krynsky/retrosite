@@ -669,6 +669,22 @@ main {
   color: var(--ink-soft);
 }
 
+.about-hero a,
+.about-notes a,
+.about-process a {
+  color: var(--marker-blue);
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+.about-hero a:hover,
+.about-notes a:hover,
+.about-process a:hover {
+  color: var(--marker-pink);
+}
+
 .about-hero .eyebrow {
   display: inline-flex;
   align-items: center;
