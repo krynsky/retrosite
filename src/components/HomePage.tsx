@@ -240,7 +240,7 @@ export function HomePage() {
           ))}
         </div>
 
-        {totalSaved > HOME_CARD_LIMIT && (
+        {totalSaved > 0 && (
           <div className="recent-more">
             <StampButton as="a" href="/timeline" tone="paper" size="sm">View more</StampButton>
           </div>
