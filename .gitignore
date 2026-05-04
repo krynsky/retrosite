@@ -10,6 +10,16 @@ HANDOFF.md
 server/generated/
 pinokio/app/
 pinokio/env/
+demosite/screenshots/
+demosite/krynsky-wayback-timeline.md
+demosite/timelines/*
+!demosite/timelines/index.json
+!demosite/timelines/apple.com/
+!demosite/timelines/apple.com/**
+!demosite/timelines/friendfeed.com/
+!demosite/timelines/friendfeed.com/**
+!demosite/timelines/krynsky.com/
+!demosite/timelines/krynsky.com/**
 npm-debug.log*
 *.log
 docs/screenshots/
