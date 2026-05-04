@@ -1,6 +1,39 @@
 {
-  "updatedAt": "2026-05-04T03:15:13.033Z",
+  "updatedAt": "2026-05-04T20:16:25.140Z",
   "timelines": [
+    {
+      "id": "5ec09606-c090-4eda-8a42-acbfc5416340",
+      "storageKey": "pirillo.com",
+      "target": "pirillo.com",
+      "host": "pirillo.com",
+      "version": 2,
+      "status": "complete",
+      "stage": "complete",
+      "progress": 100,
+      "message": "Selected 2025-05-11 screenshot for the 2025 timeline record.",
+      "screenshotLimit": 35,
+      "createdAt": "2026-05-04T18:05:15.850Z",
+      "updatedAt": "2026-05-04T19:02:59.527Z",
+      "generatedReportUrl": "/timeline/pirillo.com",
+      "generatedShareUrl": "/timeline/pirillo.com/share",
+      "stats": {
+        "captureCount": 183,
+        "candidateCount": 52,
+        "yearCount": 18,
+        "range": "1998-2026",
+        "renderedCount": 56,
+        "usableRenderCount": 46,
+        "selectedCount": 13
+      },
+      "error": null,
+      "thumbnailUrl": "/timelines/pirillo.com/screenshots/03-2003-04-11-2003-candidate-homepage.png",
+      "notifyEmail": null,
+      "notificationStatus": "not_requested",
+      "activeJobCount": 0,
+      "maxActiveJobs": 3,
+      "queuePosition": null,
+      "isActiveJob": false
+    },
     {
       "id": "940b4c92-a630-4953-ae76-195cdd368bb3",
       "storageKey": "microsoft.com",
