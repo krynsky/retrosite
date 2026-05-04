@@ -2,7 +2,6 @@
   "name": "retrosite",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
     "dev:web": "vite --host 127.0.0.1",

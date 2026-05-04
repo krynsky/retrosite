@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+const { randomUUID } = require("node:crypto");
 
 function parseBody(request) {
   if (!request.body) return {};
@@ -64,7 +64,7 @@ async function createGithubIssue(requestRecord) {
   return payload.html_url;
 }
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     response.status(405).json({ error: "Method not allowed." });

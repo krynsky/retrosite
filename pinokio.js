@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   version: "7.0",
   title: "Retrosite",
   description: "Generate editable website timeline reports from Wayback Machine captures.",

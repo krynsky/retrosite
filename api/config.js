@@ -13,7 +13,7 @@ function githubTimelineRequestSearchUrl(repo) {
   return `https://github.com/search?q=${encodeURIComponent(query)}&type=issues`;
 }
 
-export default function handler(_request, response) {
+module.exports = function handler(_request, response) {
   const mode = process.env.RETROSITE_MODE === "local" ? "local" : "request-only";
   response.status(200).json({
     mode,
