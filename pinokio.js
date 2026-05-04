@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   version: "7.0",
   title: "Retrosite",
   description: "Generate editable website timeline reports from Wayback Machine captures.",
@@ -6,10 +6,10 @@ module.exports = {
   menu: async (kernel, info) => {
     const installed = info.exists("app/node_modules");
     const running = {
-      install: info.running("install.js"),
-      start: info.running("start.js"),
-      update: info.running("update.js"),
-      reset: info.running("reset.js")
+      install: info.running("install.json"),
+      start: info.running("start.json"),
+      update: info.running("update.json"),
+      reset: info.running("reset.json")
     };
 
     if (running.install) {
@@ -17,13 +17,13 @@ module.exports = {
         default: true,
         icon: "fa-solid fa-plug",
         text: "Installing",
-        href: "install.js"
+        href: "install.json"
       }];
     }
 
     if (installed) {
       if (running.start) {
-        const local = info.local("start.js");
+        const local = info.local("start.json");
         if (local && local.url) {
           return [{
             default: true,
@@ -33,7 +33,7 @@ module.exports = {
           }, {
             icon: "fa-solid fa-terminal",
             text: "Terminal",
-            href: "start.js"
+            href: "start.json"
           }];
         }
 
@@ -41,7 +41,7 @@ module.exports = {
           default: true,
           icon: "fa-solid fa-terminal",
           text: "Terminal",
-          href: "start.js"
+          href: "start.json"
         }];
       }
 
@@ -50,7 +50,7 @@ module.exports = {
           default: true,
           icon: "fa-solid fa-terminal",
           text: "Updating",
-          href: "update.js"
+          href: "update.json"
         }];
       }
 
@@ -59,7 +59,7 @@ module.exports = {
           default: true,
           icon: "fa-solid fa-terminal",
           text: "Resetting",
-          href: "reset.js"
+          href: "reset.json"
         }];
       }
 
@@ -67,19 +67,19 @@ module.exports = {
         default: true,
         icon: "fa-solid fa-power-off",
         text: "Start",
-        href: "start.js"
+        href: "start.json"
       }, {
         icon: "fa-solid fa-plug",
         text: "Update",
-        href: "update.js"
+        href: "update.json"
       }, {
         icon: "fa-solid fa-plug",
         text: "Install",
-        href: "install.js"
+        href: "install.json"
       }, {
         icon: "fa-regular fa-circle-xmark",
         text: "Reset Dependencies",
-        href: "reset.js"
+        href: "reset.json"
       }];
     }
 
@@ -87,7 +87,7 @@ module.exports = {
       default: true,
       icon: "fa-solid fa-plug",
       text: "Install",
-      href: "install.js"
+      href: "install.json"
     }];
   }
 };

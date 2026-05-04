@@ -9,3 +9,10 @@ tmp-*.png
 *.local
 *.log
 npm-debug.log*
+install.json
+pinokio.js
+pinokio.json
+pinokio_README.md
+reset.json
+start.json
+update.json

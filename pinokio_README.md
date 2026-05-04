@@ -4,7 +4,7 @@ Retrosite turns public Wayback Machine captures into editable website timeline r
 
 ## Use
 
-1. Open this `pinokio` folder in Pinokio.
+1. Open this repository folder in Pinokio.
 2. Click `Install`.
 3. Click `Start`.
 4. Use Retrosite to create, edit, export, and browse local timeline reports.
@@ -13,10 +13,10 @@ Generated reports and screenshots stay local inside `app/server/generated/`.
 
 ## Launcher Scripts
 
-- `install.js` clones `https://github.com/krynsky/retrosite`, installs npm dependencies, and installs Playwright Chromium.
-- `start.js` runs `npm run dev` with local report generation enabled.
-- `update.js` pulls the latest Retrosite code and refreshes dependencies.
-- `reset.js` removes dependencies and build caches without deleting generated reports.
+- `install.json` clones `https://github.com/krynsky/retrosite`, installs npm dependencies, and installs Playwright Chromium.
+- `start.json` runs `npm run dev` with local report generation enabled.
+- `update.json` pulls the latest Retrosite code and refreshes dependencies.
+- `reset.json` removes dependencies and build caches without deleting generated reports.
 
 ## API
 
