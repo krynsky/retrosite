@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-03T20:08:28.488Z",
+  "updatedAt": "2026-05-04T02:47:26.886Z",
   "timelines": [
     {
       "id": "e7fede1f-11f1-4638-8ded-810c6e14469b",
@@ -60,6 +60,39 @@
       },
       "error": null,
       "thumbnailUrl": "/timelines/paulstamatiou.com/screenshots/01-2005-10-19-2005-candidate-homepage.png",
+      "notifyEmail": null,
+      "notificationStatus": "not_requested",
+      "activeJobCount": 0,
+      "maxActiveJobs": 3,
+      "queuePosition": null,
+      "isActiveJob": false
+    },
+    {
+      "id": "db6cebf0-792d-4723-8e92-6ae5aa197f4d",
+      "storageKey": "friendfeed.com/krynsky",
+      "target": "friendfeed.com/krynsky",
+      "host": "friendfeed.com/krynsky",
+      "version": 2,
+      "status": "complete",
+      "stage": "complete",
+      "progress": 100,
+      "message": "Updated 2015-03-10 report details.",
+      "screenshotLimit": 35,
+      "createdAt": "2026-05-02T22:31:39.236Z",
+      "updatedAt": "2026-05-03T03:33:02.415Z",
+      "generatedReportUrl": "/timeline/friendfeed.com/krynsky",
+      "generatedShareUrl": "/timeline/friendfeed.com/krynsky/share",
+      "stats": {
+        "captureCount": 73,
+        "candidateCount": 33,
+        "yearCount": 9,
+        "range": "2007-2015",
+        "renderedCount": 23,
+        "usableRenderCount": 21,
+        "selectedCount": 8
+      },
+      "error": null,
+      "thumbnailUrl": "/timelines/friendfeed.com/krynsky/screenshots/01-2008-12-26-2008-candidate-homepage.png",
       "notifyEmail": null,
       "notificationStatus": "not_requested",
       "activeJobCount": 0,
