@@ -1,46 +1,42 @@
 # Retrosite
 
-Retrosite turns public Wayback Machine captures into visual timeline reports.
+Retrosite turns public Wayback Machine captures into visual website timeline reports.
 
-[Live demo site](https://retrosite.krynsky.com/)
+[View the demo site](https://retrosite.krynsky.com/)
 
 [![Retrosite demo site screenshot](krynsky-wayback/og-image.png)](https://retrosite.krynsky.com/)
 
-## What It Does
+## What Retrosite Does
 
-Retrosite has two operating modes:
+Retrosite is a local web app for creating timeline reports from archived website captures. You enter a domain or domain/path, Retrosite queries the Wayback Machine, renders selected captures in Chrome, and builds an editable visual timeline.
 
-- The hosted demo at `retrosite.krynsky.com` is a read-only showcase for published website timelines. Visitors can browse timelines and submit requests for future reports.
-- The local app is the full report-generation workspace. It discovers Wayback captures, renders screenshots in Chrome, lets you curate entries, edits timeline labels and notes, exports reports, and publishes finished timelines to the demo site.
+The hosted demo shows examples of finished timelines and accepts requests for future reports. To create your own reports, run the app locally.
 
-Current demo timelines are static assets under `krynsky-wayback/timelines/`, so the public site can stay simple and safe while the expensive browser automation runs locally.
+## Features
 
-## Current Site Updates
+- Generate reports from a public domain or domain/path.
+- Query Wayback Machine captures across common URL variants.
+- Render candidate captures with Chrome through Playwright.
+- Score screenshot quality and try nearby same-year replacements for weak captures.
+- Review and curate which captures appear in the final timeline.
+- Edit timeline labels, notes, and tech-stack fields.
+- Select a custom thumbnail for a timeline.
+- Browse timelines in full timeline mode or image-only mode.
+- Open screenshots in a full-size modal.
+- Keep version history for generated timelines.
+- Delete reports or older versions locally.
+- Export finished reports as Markdown or HTML packages with screenshot assets.
+- Infer tech stack details such as WordPress and FrontPage versions, readable WordPress theme/plugin names, and legacy ASP-link signals.
 
-- Hosted request-only demo mode with public timeline browsing and timeline request submission.
-- Static published timeline pages at `/timeline/:target`.
-- All-timelines index at `/timeline`.
-- Local report generation from domains or domain/path values.
-- Wayback capture discovery across URL variants.
-- Playwright screenshot rendering through Chrome.
-- Screenshot quality scoring and same-year replacement attempts for weak captures.
-- Editable local curation for timeline inclusion, labels, notes, and tech-stack fields.
-- Version history view with delete controls for older versions.
-- Report deletion controls in local/admin mode.
-- Timeline thumbnail selection from any included capture.
-- Full screenshot modal opened from a single `View full` control.
-- Markdown and HTML export packages with local screenshot assets.
-- Static publish workflow for pushing local reports to the demo site.
-- Improved tech-stack inference with WordPress and FrontPage versions, readable WordPress theme/plugin labels, and legacy ASP-link handling.
+## Demo Site
 
-## Routes
+The demo site is available at:
 
-- `/` - demo request form and recent published timelines.
-- `/about` - hosted demo process overview.
-- `/how-to-use` - instructions for running Retrosite locally.
-- `/timeline` - published timeline list.
-- `/timeline/:target` - generated or published timeline view.
-- `/timeline/:target/v/:version` - local generated timeline version view.
+```text
+https://retrosite.krynsky.com/
+```
+
+Use it to see what finished Retrosite timelines look like. The demo site is intentionally limited: it can show published examples and collect requests, but report generation and editing happen in the local app.
 
 ## Local Setup
 
@@ -56,49 +52,70 @@ Run the local dev stack:
 npm run dev
 ```
 
-The dev server defaults to:
+Open the local app:
 
 ```text
 http://127.0.0.1:5173/
 ```
 
-The API defaults to:
+The API runs at:
 
 ```text
 http://127.0.0.1:4317/
 ```
 
-Run a production-style local build:
+## Creating a Timeline Locally
 
-```powershell
-npm run build
-npm run start
+1. Start the app with `npm run dev`.
+2. Enter a domain or domain/path, such as `example.com` or `example.com/blog`.
+3. Wait for Wayback discovery and screenshot rendering to finish.
+4. Review the generated timeline.
+5. Use the local edit controls to adjust entries, notes, labels, screenshots, and thumbnail selection.
+6. Export the final report as Markdown or HTML.
+
+Generated jobs and screenshots are stored locally under:
+
+```text
+server/generated/
 ```
 
-## Publishing Timelines
+That folder is ignored by git.
 
-Publish a locally generated timeline into static demo assets:
+## Useful Commands
 
-```powershell
-npm run publish:timeline -- <job-id-or-target>
-```
-
-The custom Codex skill `retrosite-publish` wraps the full demo-site publish flow: publish static assets, build, push, deploy to Vercel, verify the live timeline, and close the matching GitHub request issue when one exists.
-
-Run request-only mode for a hosted demo:
-
-```powershell
-$env:RETROSITE_MODE = "request-only"
-npm run start
-```
-
-## Verification
+Run tests:
 
 ```powershell
 npm test
+```
+
+Run TypeScript checks:
+
+```powershell
 npm run check
+```
+
+Build the app:
+
+```powershell
 npm run build
 ```
+
+Run a production-style local server:
+
+```powershell
+npm run build
+npm run start
+```
+
+## Routes
+
+- `/` - local report creation form.
+- `/about` - overview of how the hosted demo works.
+- `/how-to-use` - local usage guide.
+- `/timeline` - timeline list.
+- `/timeline/:target` - timeline view.
+- `/timeline/:target/v/:version` - local generated timeline version view.
 
 ## Project Structure
 
@@ -119,24 +136,14 @@ docs/
   BACKLOG.md               Remaining work
   PACKAGING.md             Local, Pinokio, and Vercel packaging notes
 krynsky-wayback/
-  og-image.png             Demo-site Open Graph screenshot
+  og-image.png             Demo-site screenshot used by link previews
   screenshots/             Original hand-curated report assets
-  timelines/               Published static generated timelines
 ```
 
-## Generated Data
+## Notes
 
-Generated jobs and screenshots are written under:
-
-```text
-server/generated/
-```
-
-That folder is ignored by git. For hosted generation, move it to a durable volume or replace it with database/object storage.
-
-## Known Gaps
-
-- The hosted demo does not run generation or editing directly.
+- Retrosite depends on local browser automation, so generation is meant to run on your machine.
+- The hosted demo does not run the screenshot pipeline directly.
 - Generated entry titles can still benefit from manual curation.
 - There is no hosted multi-user account model.
 - Email notifications and durable hosted queues are not productionized yet.
