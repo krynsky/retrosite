@@ -1,7 +1,6 @@
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
 
 const currentFile = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(currentFile), "..");
@@ -13,7 +12,7 @@ const publicTimelinesRoot = path.join(repoRoot, "demosite", "timelines");
 const vitePublicRoot = path.join(repoRoot, "demosite");
 
 function usage() {
-  console.error("Usage: npm run publish:timeline -- <job-id-or-target|krynsky-com-seed> [public-slug]");
+  console.error("Usage: npm run publish:timeline -- <job-id-or-target> [public-slug]");
   process.exit(1);
 }
 
@@ -68,6 +67,14 @@ function entryKey(entry) {
   return `${entry.timestamp ?? ""}|${entry.date}|${entry.source}`;
 }
 
+function reportEntryKey(entry) {
+  return `${entry.timestamp}:${entry.original}`;
+}
+
+function matchesThumbnailEntryKey(entry, thumbnailKey) {
+  return thumbnailKey && (reportEntryKey(entry) === thumbnailKey || entryKey(entry) === thumbnailKey);
+}
+
 function publicTimelineJob(job, entries, exportUrls = {}) {
   return {
     id: job.id,
@@ -97,9 +104,17 @@ function publicTimelineJob(job, entries, exportUrls = {}) {
   };
 }
 
+function timelineThumbnailEntry(job) {
+  const report = job.report;
+  const entries = [...(report?.curatedEntries ?? []), ...(report?.entries ?? [])];
+  const thumbnailKey = report?.thumbnailEntryKey ?? "";
+  return entries.find((entry) => matchesThumbnailEntryKey(entry, thumbnailKey) && entry.screenshotUrl)
+    ?? entries.find((entry) => entry.screenshotUrl)
+    ?? null;
+}
+
 function publicTimelineSummary(job, slug) {
-  const renderedEntry = job.report?.curatedEntries?.find((entry) => entry.screenshotUrl)
-    ?? job.report?.entries?.find((entry) => entry.screenshotUrl);
+  const renderedEntry = timelineThumbnailEntry(job);
 
   return {
     id: job.id,
@@ -118,7 +133,7 @@ function publicTimelineSummary(job, slug) {
     generatedShareUrl: `${timelineRoutePath(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error ?? null,
-    thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
+    thumbnailUrl: renderedEntry?.screenshotUrl ?? job.report?.thumbnailUrl ?? null,
     notifyEmail: null,
     notificationStatus: "not_requested",
     activeJobCount: 0,
@@ -246,84 +261,6 @@ async function findJob(selector) {
     .filter((job) => job.id === selector || job.host === selector || job.target === selector)
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return matches[0] ?? null;
-}
-
-async function readKrynskySeedTimeline() {
-  const sourceFile = path.join(repoRoot, "src", "data", "krynskyTimeline.ts");
-  const source = await readFile(sourceFile, "utf8");
-  const executableSource = source
-    .replace(/export type TimelineEntry = \{[\s\S]*?\};\s*/, "")
-    .replace(/export const krynskyTimeline: TimelineEntry\[] =/, "const krynskyTimeline =");
-
-  const context = {};
-  return vm.runInNewContext(`${executableSource}\nkrynskyTimeline;`, context, {
-    filename: sourceFile
-  });
-}
-
-async function buildKrynskySeedJob() {
-  const seedEntries = await readKrynskySeedTimeline();
-  const first = seedEntries[0];
-  const last = seedEntries[seedEntries.length - 1];
-  const firstYear = first.date.slice(0, 4);
-  const lastYear = last.date.slice(0, 4);
-  const now = new Date().toISOString();
-  const entries = seedEntries.map((entry) => ({
-    timestamp: entry.source.match(/\/web\/(\d+)/)?.[1] ?? entry.date.replaceAll("-", ""),
-    date: entry.date,
-    title: entry.title,
-    notes: entry.notes,
-    techStack: entry.techStack,
-    source: entry.source,
-    original: entry.source,
-    screenshotStatus: "ok",
-    screenshotUrl: entry.image,
-    screenshotError: null,
-    screenshotQuality: null,
-    replacementOf: null,
-    replacementAttempts: [],
-    focusScale: entry.focusScale,
-    focusOrigin: entry.focusOrigin,
-    focusHeight: entry.focusHeight
-  }));
-
-  return {
-    id: "krynsky-com-seed",
-    target: "https://krynsky.com",
-    host: "krynsky.com",
-    version: 1,
-    status: "complete",
-    stage: "complete",
-    progress: 100,
-    message: "",
-    screenshotLimit: entries.length,
-    createdAt: first.date,
-    updatedAt: now,
-    events: [],
-    discovery: null,
-    report: {
-      title: "krynsky.com visual timeline",
-      summary: "Hand-curated visual timeline from Wayback Machine captures.",
-      publicationStatus: "published",
-      publishedAt: now,
-      stats: {
-        captureCount: entries.length,
-        candidateCount: entries.length,
-        yearCount: entries.length,
-        range: `${firstYear}-${lastYear}`,
-        renderedCount: entries.length,
-        usableRenderCount: entries.length,
-        selectedCount: entries.length
-      },
-      entries,
-      curatedEntries: entries,
-      generatedReportUrl: "/timeline/krynsky.com",
-      generatedShareUrl: "/timeline/krynsky.com/share"
-    },
-    error: null,
-    notifyEmail: null,
-    notificationStatus: "not_requested"
-  };
 }
 
 function localScreenshotPath(job, screenshotUrl) {
@@ -597,9 +534,7 @@ async function main() {
   const selector = process.argv[2];
   if (!selector) usage();
 
-  const job = selector === "krynsky-com-seed" || selector === "seed:krynsky.com"
-    ? await buildKrynskySeedJob()
-    : await findJob(selector);
+  const job = await findJob(selector);
   if (!job?.report) {
     throw new Error(`Could not find a generated report for "${selector}".`);
   }
