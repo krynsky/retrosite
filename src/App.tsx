@@ -52,38 +52,38 @@ const localUseSteps = [
   {
     number: "01",
     title: "Install",
-    summary: "Install dependencies from the project folder.",
-    detail: "Run `npm install` after cloning the repository. The app is a local web server with a Vite frontend and Express API."
+    summary: "Install from GitHub or Pinokio.",
+    detail: "Pinokio installs and starts the app for you. If you clone the repository directly, run `npm install` from the project folder. Both install paths include the same local app and starter timelines."
   },
   {
     number: "02",
-    title: "Run locally",
-    summary: "Start the API and web app together.",
-    detail: "Run `npm run dev`, then open `http://127.0.0.1:5173/`. Local mode enables report generation and edit controls by default."
+    title: "Open Retrosite",
+    summary: "Run the local web app on your machine.",
+    detail: "Pinokio opens Retrosite from its app screen. For a repository install, run `npm run dev`, then open `http://127.0.0.1:5173/`. Local mode enables report generation and edit controls by default."
   },
   {
     number: "03",
+    title: "Browse starter timelines",
+    summary: "Start with a small curated set of example timelines.",
+    detail: "Local and Pinokio installs include a few starter timelines so you can inspect the finished report format before generating your own. The larger public demo gallery is kept separate from normal installs."
+  },
+  {
+    number: "04",
     title: "Create a timeline",
     summary: "Enter a public domain or path, then create the timeline.",
     detail: "Examples include `example.com`, `krynsky.com`, or `friendfeed.com/krynsky`. Retrosite queries Wayback Machine captures, renders screenshots in Chrome, and builds an editable draft."
   },
   {
-    number: "04",
+    number: "05",
     title: "Edit and curate",
     summary: "Review screenshots, labels, notes, and tech-stack fields.",
-    detail: "Use the timeline view and local edit controls to choose better screenshots, exclude weak captures, and correct the text before publishing or exporting."
-  },
-  {
-    number: "05",
-    title: "Export",
-    summary: "Export Markdown or HTML with included screenshot assets.",
-    detail: "Generated exports are zip packages so the timeline document and its screenshots stay together."
+    detail: "Use the timeline view and local edit controls to choose better screenshots, exclude weak captures, and correct the text before exporting."
   },
   {
     number: "06",
-    title: "Publish static timelines",
-    summary: "Promote a local timeline into public static assets.",
-    detail: "Run `npm run publish:timeline -- <job-id-or-target>` to write `demosite/timelines/<target>/timeline.json` and screenshot files for a hosted read-only site."
+    title: "Export",
+    summary: "Export Markdown or HTML with included screenshot assets.",
+    detail: "Generated exports are zip packages so the timeline document and its screenshots stay together for your own archive, notes, or site."
   }
 ];
 
@@ -133,8 +133,9 @@ function HowToUsePage() {
         </span>
         <h1>Run Retrosite locally and create website timelines</h1>
         <p>
-          The local version is the full Retrosite app. It can create timeline jobs, render Wayback Machine screenshots,
-          let you edit the generated draft, and export or publish the finished timeline.
+          The local and Pinokio versions are built for private timeline generation on your own machine. They include a
+          small starter set of timelines, can render Wayback Machine screenshots, let you edit generated drafts, and
+          export finished timelines without depending on the hosted demo site.
         </p>
       </section>
 
@@ -153,22 +154,23 @@ function HowToUsePage() {
         <div>
           <h2>Useful commands</h2>
           <p>
-            Use `npm run dev` for local development, `npm test` for the API and pipeline tests, `npm run check` for
-            TypeScript, and `npm run build` before publishing changes.
+            For a repository install, use `npm run dev` to start Retrosite, `npm test` for the API and pipeline tests,
+            `npm run check` for TypeScript, and `npm run build` to verify a production build. Pinokio runs the start
+            command from its app screen.
+          </p>
+        </div>
+        <div>
+          <h2>Starter timelines</h2>
+          <p>
+            Normal installs include a small curated timeline set for browsing examples. The full public demo gallery is
+            restored only during the hosted demo deployment and is not part of regular local or Pinokio use.
           </p>
         </div>
         <div>
           <h2>Local data</h2>
           <p>
-            Generated jobs and screenshots are stored under `server/generated/`. This folder is intentionally local and
-            ignored by git.
-          </p>
-        </div>
-        <div>
-          <h2>Public demo publishing</h2>
-          <p>
-            After a timeline is curated locally, publish static assets with `npm run publish:timeline -- target`, then
-            deploy the static timeline files with the site.
+            Generated jobs and screenshots are stored under `server/generated/` inside the installed app. This folder is
+            intentionally local, ignored by git, and separate between a direct repository install and a Pinokio install.
           </p>
         </div>
       </section>
