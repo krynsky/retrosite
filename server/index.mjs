@@ -312,6 +312,14 @@ function createQueuedReportJob({ host, screenshotLimit, notifyEmail, version = 1
   };
 }
 
+function timelineRoutePath(target) {
+  return `/timeline/${String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+}
+
 function waybackReplayUrl(timestamp, original) {
   return `https://web.archive.org/web/${timestamp}if_/${original}`;
 }
@@ -954,8 +962,8 @@ function curateDraftReport(job) {
   const deduplicated = deduplicateByEra(sorted);
 
   job.report.curatedEntries = deduplicated.map(curatedEntryCopy);
-  job.report.generatedReportUrl = `/timeline/${encodeURIComponent(job.host)}`;
-  job.report.generatedShareUrl = `/timeline/${encodeURIComponent(job.host)}/share`;
+  job.report.generatedReportUrl = timelineRoutePath(job.host);
+  job.report.generatedShareUrl = `${timelineRoutePath(job.host)}/share`;
   job.report.publicationStatus = job.report.publicationStatus ?? "draft";
   job.report.publishedAt = job.report.publishedAt ?? null;
   job.report.stats.renderedCount = renderedEntries.length;
@@ -1313,6 +1321,10 @@ function queueNotificationOutbox(job) {
 
 function publicJob(job) {
   normalizeReportReadiness(job);
+  if (job.report) {
+    job.report.generatedReportUrl = timelineRoutePath(job.host);
+    job.report.generatedShareUrl = `${timelineRoutePath(job.host)}/share`;
+  }
   return {
     id: job.id,
     target: job.target,
@@ -1352,8 +1364,8 @@ function publicJobSummary(job) {
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: `/timeline/${encodeURIComponent(job.host)}`,
-    generatedShareUrl: `/timeline/${encodeURIComponent(job.host)}/share`,
+    generatedReportUrl: timelineRoutePath(job.host),
+    generatedShareUrl: `${timelineRoutePath(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error,
     thumbnailUrl: renderedEntry?.screenshotUrl ?? null,

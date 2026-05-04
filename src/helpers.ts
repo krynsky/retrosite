@@ -245,7 +245,37 @@ export function visibleEntryNotes(notes: string | null | undefined) {
 }
 
 export function generatedSharePath(job: ReportJob | ReportJobSummary) {
-  return `/timeline/${encodeURIComponent(job.host)}/share`;
+  return `${timelinePath(job.host)}/share`;
+}
+
+export function timelinePath(target: string) {
+  return `/timeline/${String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+}
+
+export function timelineAssetPath(target: string) {
+  return String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+export function decodeTimelinePath(pathname: string) {
+  return String(pathname)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join("/");
 }
 
 export function absoluteAppUrl(pathname: string) {

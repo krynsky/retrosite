@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { ReportJobSummary, TimelineRequest } from "../types";
 import { useAppConfig } from "../useAppConfig";
+import { timelinePath } from "../helpers";
 import { seedReportCard } from "../reportCards";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
@@ -134,8 +135,8 @@ export function HomePage() {
         throw new Error(payload.error ?? "Unable to create timeline job.");
       }
 
-      const host = payload.host ?? domain.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-      window.location.assign(`/timeline/${encodeURIComponent(host)}`);
+      const host = payload.host ?? domain.trim().replace(/^https?:\/\//, "");
+      window.location.assign(timelinePath(host));
     } catch (caught) {
       setSubmitError(caught instanceof Error ? caught.message : "Unable to create timeline job.");
     } finally {

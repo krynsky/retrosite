@@ -1,12 +1,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+function timelineRoutePath(target) {
+  return `/timeline/${String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+}
+
 function absoluteReportUrl(job, appOrigin) {
-  const canonicalReportPath = `/timeline/${encodeURIComponent(job.host)}`;
-  const reportPath = job.report?.generatedReportUrl?.startsWith("/timeline/")
-    ? job.report.generatedReportUrl
-    : canonicalReportPath;
-  return new URL(reportPath, appOrigin).toString();
+  const canonicalReportPath = timelineRoutePath(job.host);
+  return new URL(canonicalReportPath, appOrigin).toString();
 }
 
 export function buildNotificationRecord(job, appOrigin) {

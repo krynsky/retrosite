@@ -3,6 +3,7 @@ import { HomePage } from "./components/HomePage";
 import { ReportPage } from "./components/ReportPage";
 import { ReportsPage } from "./components/ReportsPage";
 import { SiteNav } from "./components/SiteNav";
+import { decodeTimelinePath } from "./helpers";
 
 const demoProcessSteps = [
   {
@@ -185,14 +186,14 @@ export function App() {
     return null;
   }
 
-  const versionMatch = pathname.match(/^\/timeline\/([^/]+?)\/v\/(\d+)(?:\/share)?$/);
+  const versionMatch = pathname.match(/^\/timeline\/(.+?)\/v\/(\d+)(?:\/share)?$/);
   if (versionMatch) {
-    return <ReportPage domain={decodeURIComponent(versionMatch[1])} version={Number(versionMatch[2])} />;
+    return <ReportPage domain={decodeTimelinePath(versionMatch[1])} version={Number(versionMatch[2])} />;
   }
 
-  const reportMatch = pathname.match(/^\/timeline\/([^/]+?)(?:\/share)?$/);
+  const reportMatch = pathname.match(/^\/timeline\/(.+)$/);
   if (reportMatch) {
-    return <ReportPage domain={decodeURIComponent(reportMatch[1])} />;
+    return <ReportPage domain={decodeTimelinePath(reportMatch[1].replace(/\/share$/, ""))} />;
   }
 
   return <HomePage />;

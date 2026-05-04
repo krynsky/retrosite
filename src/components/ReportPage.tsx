@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Clipboard, FileText, Loader2, RefreshCw } from "lucide-react";
 import { krynskyTimeline } from "../data/krynskyTimeline";
 import type { ReportJob, ReportVersionSummary } from "../types";
-import { absoluteAppUrl, canCancelJob, canRetryJob, copyTextToClipboard, generatedSharePath } from "../helpers";
+import {
+  absoluteAppUrl,
+  canCancelJob,
+  canRetryJob,
+  copyTextToClipboard,
+  generatedSharePath,
+  timelineAssetPath,
+  timelinePath
+} from "../helpers";
 import { useAppConfig } from "../useAppConfig";
 import { SiteNav } from "./SiteNav";
 import { JobProgress } from "./JobProgress";
@@ -56,7 +64,10 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
           }
         } else {
           if (version == null) {
-            const staticResponse = await fetch(`/timelines/${encodeURIComponent(domain)}/timeline.json`);
+            let staticResponse = await fetch(`/timelines/${timelineAssetPath(domain)}/timeline.json`);
+            if (!staticResponse.ok && domain.includes("/")) {
+              staticResponse = await fetch(`/timelines/${encodeURIComponent(domain)}/timeline.json`);
+            }
             if (staticResponse.ok) {
               const staticPayload = await staticResponse.json();
               if (!cancelled) {
@@ -130,7 +141,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
       const response = await fetch(`/api/reports/${job.id}/retry`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to retry job.");
-      window.location.assign(`/timeline/${encodeURIComponent(payload.host ?? domain)}`);
+      window.location.assign(timelinePath(payload.host ?? domain));
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to retry job.");
       setActionSaving(false);
@@ -145,7 +156,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
       const response = await fetch(`/api/reports/${encodeURIComponent(domain)}/rerun`, { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to re-run report.");
-      window.location.assign(`/timeline/${encodeURIComponent(payload.host ?? domain)}`);
+      window.location.assign(timelinePath(payload.host ?? domain));
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to re-run report.");
       setRerunning(false);
@@ -186,7 +197,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
         {version != null && job && (
           <p className="warning-note">
             Viewing version {version}.{" "}
-            <a href={`/timeline/${encodeURIComponent(domain)}`}>
+            <a href={timelinePath(domain)}>
               Go to latest version
             </a>
           </p>
@@ -260,8 +271,8 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
                   {versions.map((v) => {
                     const isCurrent = (job.version ?? 1) === v.version;
                     const versionUrl = v.version === versions[0].version
-                      ? `/timeline/${encodeURIComponent(domain)}`
-                      : `/timeline/${encodeURIComponent(domain)}/v/${v.version}`;
+                      ? timelinePath(domain)
+                      : `${timelinePath(domain)}/v/${v.version}`;
                     return (
                       <a
                         key={v.version}

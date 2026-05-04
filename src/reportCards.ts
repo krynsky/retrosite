@@ -1,5 +1,6 @@
 import { krynskyTimeline } from "./data/krynskyTimeline";
 import type { ReportJob, ReportJobSummary } from "./types";
+import { timelinePath } from "./helpers";
 
 export function seedReportCard(): ReportJobSummary {
   const first = krynskyTimeline[0];
@@ -56,8 +57,8 @@ export function reportJobToSummary(job: ReportJob): ReportJobSummary {
     screenshotLimit: job.screenshotLimit,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: job.report?.generatedReportUrl ?? `/timeline/${encodeURIComponent(job.host)}`,
-    generatedShareUrl: job.report?.generatedShareUrl ?? `/timeline/${encodeURIComponent(job.host)}/share`,
+    generatedReportUrl: timelinePath(job.host),
+    generatedShareUrl: `${timelinePath(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error,
     thumbnailUrl: renderedEntry?.screenshotUrl ?? null,

@@ -43,6 +43,22 @@ function exportSafeSegment(value, fallback = "retrosite") {
     .slice(0, 80) || fallback;
 }
 
+function timelineRoutePath(target) {
+  return `/timeline/${String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+}
+
+function timelineAssetPath(target) {
+  return String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 function reportExportBaseName(job) {
   const range = exportSafeSegment(job.report?.stats?.range ?? "timeline", "timeline");
   return `${exportSafeSegment(job.host, "retrosite")}-${range}`;
@@ -72,8 +88,8 @@ function publicTimelineJob(job, entries, exportUrls = {}) {
       entries,
       curatedEntries: entries,
       exports: exportUrls,
-      generatedReportUrl: `/timeline/${encodeURIComponent(job.host)}`,
-      generatedShareUrl: `/timeline/${encodeURIComponent(job.host)}/share`
+      generatedReportUrl: timelineRoutePath(job.host),
+      generatedShareUrl: `${timelineRoutePath(job.host)}/share`
     },
     error: job.error ?? null,
     notifyEmail: null,
@@ -98,8 +114,8 @@ function publicTimelineSummary(job, slug) {
     screenshotLimit: job.screenshotLimit,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-    generatedReportUrl: job.report?.generatedReportUrl ?? `/timeline/${encodeURIComponent(job.host)}`,
-    generatedShareUrl: job.report?.generatedShareUrl ?? `/timeline/${encodeURIComponent(job.host)}/share`,
+    generatedReportUrl: timelineRoutePath(job.host),
+    generatedShareUrl: `${timelineRoutePath(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error ?? null,
     thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
@@ -113,14 +129,25 @@ function publicTimelineSummary(job, slug) {
 }
 
 async function writePublishedTimelineIndex() {
-  const dirs = await readdir(publicTimelinesRoot, { withFileTypes: true }).catch(() => []);
   const timelines = [];
 
-  for (const dirent of dirs) {
-    if (!dirent.isDirectory()) continue;
+  async function collectTimelineFiles(baseDir) {
+    const found = [];
+    const entries = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const fullPath = path.join(baseDir, entry.name);
+      if (entry.isFile() && entry.name === "timeline.json") {
+        found.push(fullPath);
+      } else if (entry.isDirectory() && entry.name !== "screenshots") {
+        found.push(...await collectTimelineFiles(fullPath));
+      }
+    }
+    return found;
+  }
+
+  for (const timelineFile of await collectTimelineFiles(publicTimelinesRoot)) {
     try {
-      const slug = dirent.name;
-      const timelineFile = path.join(publicTimelinesRoot, slug, "timeline.json");
+      const slug = path.dirname(path.relative(publicTimelinesRoot, timelineFile)).split(path.sep).join("/");
       const job = JSON.parse(await readFile(timelineFile, "utf8"));
       if (job?.report?.curatedEntries?.length || job?.report?.entries?.length) {
         timelines.push(publicTimelineSummary(job, slug));
@@ -577,7 +604,7 @@ async function main() {
     throw new Error(`Could not find a generated report for "${selector}".`);
   }
 
-  const slug = process.argv[3] || encodeURIComponent(job.host);
+  const slug = process.argv[3] || timelineAssetPath(job.host);
   const outDir = path.join(publicTimelinesRoot, slug);
   const screenshotsDir = path.join(outDir, "screenshots");
   await rm(outDir, { recursive: true, force: true });

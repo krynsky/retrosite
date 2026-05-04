@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import type { ReportJobSummary } from "../types";
-import { formatJobTime, reportStageLabel } from "../helpers";
+import { formatJobTime, reportStageLabel, timelinePath } from "../helpers";
 
 export function ReportCard({
   job,
@@ -12,7 +12,7 @@ export function ReportCard({
   onDelete?: (id: string) => void;
 }) {
   const isRunning = job.status === "queued" || job.status === "running";
-  const reportUrl = `/timeline/${encodeURIComponent(job.host)}`;
+  const reportUrl = timelinePath(job.host);
   const statusLabel = job.status.toUpperCase();
   const stageLabel = reportStageLabel(job.stage).toUpperCase();
 
