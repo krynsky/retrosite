@@ -1,7 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
 import { ArrowUpRight, Images, List, Maximize2 } from "lucide-react";
 import type { DraftReportEntry } from "../types";
-import type { TimelineEntry } from "../data/krynskyTimeline";
 import { visibleEntryNotes } from "../helpers";
 import { ScreenshotModal } from "./ScreenshotModal";
 
@@ -17,22 +16,11 @@ type NormalizedEntry = {
   replacementAttempts?: DraftReportEntry["replacementAttempts"];
 };
 
-function normalizeSeedEntry(entry: TimelineEntry): NormalizedEntry {
-  return {
-    date: entry.date,
-    title: entry.title,
-    notes: "",
-    techStack: entry.techStack,
-    source: entry.source,
-    imageUrl: entry.image
-  };
-}
-
 function summarizeTechStack(techStack: string): string {
   const core = techStack.split(" · ")[0];
   const parts = core.split(",").map((s) => s.trim());
   const cms = parts.find((p) => /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(p));
-  const theme = parts.find((p) => /^theme:/i.test(p));
+  const theme = parts.find((p) => /^theme:/i.test(p) || /\btheme$/i.test(p));
   if (cms && theme) return `${cms}, ${theme}`;
   if (cms) return cms;
   if (parts.length <= 2) return core;
@@ -58,19 +46,15 @@ export function TimelineView({
   range,
   createdAt,
   actions,
-  seedEntries,
   generatedEntries
 }: {
   domain: string;
   range: string;
   createdAt?: string;
   actions?: ReactNode;
-  seedEntries?: TimelineEntry[];
   generatedEntries?: DraftReportEntry[];
 }) {
-  const entries: NormalizedEntry[] = seedEntries
-    ? seedEntries.map(normalizeSeedEntry)
-    : (generatedEntries ?? []).map(normalizeGeneratedEntry);
+  const entries: NormalizedEntry[] = (generatedEntries ?? []).map(normalizeGeneratedEntry);
 
   const [activeEntryIndex, setActiveEntryIndex] = useState(0);
   const [displayMode, setDisplayMode] = useState<"timeline" | "image-only">("timeline");
@@ -81,7 +65,7 @@ export function TimelineView({
     setActiveEntryIndex(0);
     setDisplayMode("timeline");
     setFullImage(null);
-  }, [seedEntries, generatedEntries]);
+  }, [generatedEntries]);
 
   if (entries.length === 0) {
     return <p className="warning-note">No entries available for this report.</p>;

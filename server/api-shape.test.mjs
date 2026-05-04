@@ -89,6 +89,10 @@ async function startTestServerContext(t, port, extraEnv = {}) {
   return { baseUrl, generatedRoot };
 }
 
+function reportStorageKey(job) {
+  return job.storageKey ?? job.storageSlug ?? job.id;
+}
+
 async function startTestServer(t, port, extraEnv = {}) {
   const context = await startTestServerContext(t, port, extraEnv);
   return context.baseUrl;
@@ -216,6 +220,27 @@ test("queued report jobs can be canceled", async (t) => {
   assert.match(canceledJob.message, /canceled/i);
 });
 
+test("report creation accepts local depth modes", async (t) => {
+  const baseUrl = await startTestServer(t, testPort + 12, { RETROSITE_DISABLE_RUNNER: "1" });
+
+  const createResponse = await fetch(`${baseUrl}/api/reports`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      url: "example.net",
+      depthMode: "quick"
+    })
+  });
+  assert.equal(createResponse.status, 202);
+
+  const createdJob = await createResponse.json();
+  assert.equal(createdJob.depthMode, "quick");
+  assert.equal(createdJob.screenshotLimit, 10);
+  assert.equal(createdJob.archiveProfile, null);
+});
+
 test("canceled report jobs can be retried as fresh queued jobs", async (t) => {
   const baseUrl = await startTestServer(t, testPort + 3, { RETROSITE_DISABLE_RUNNER: "1" });
 
@@ -303,6 +328,16 @@ test("report creation accepts a path within a domain as its own target", async (
   assert.equal(reportJob.id, createdJob.id);
 });
 
+test("krynsky.com version zero is not served as a static seed report", async (t) => {
+  const baseUrl = await startTestServer(t, testPort + 12, { RETROSITE_RUNNER_MODE: "external" });
+
+  const reportResponse = await fetch(`${baseUrl}/api/reports/krynsky.com?version=0`);
+  assert.equal(reportResponse.status, 404);
+
+  const versionsResponse = await fetch(`${baseUrl}/api/reports/krynsky.com/versions`);
+  assert.equal(versionsResponse.status, 404);
+});
+
 test("worker entrypoint can run once without starting the API server", async (t) => {
   const generatedRoot = await mkdtemp(path.join(tmpdir(), "retrosite-worker-generated-"));
   t.after(async () => {
@@ -385,7 +420,8 @@ test("external runner mode refreshes worker-updated jobs from disk", async (t) =
   assert.equal(createResponse.status, 202);
   const createdJob = await createResponse.json();
 
-  const jobFile = path.join(generatedRoot, "reports", createdJob.id, "job.json");
+  assert.match(createdJob.storageKey, /^example\.net--[a-f0-9-]{8}$/);
+  const jobFile = path.join(generatedRoot, "reports", reportStorageKey(createdJob), "job.json");
   await waitForFile(jobFile);
   const persistedJob = JSON.parse(await readFile(jobFile, "utf8"));
   persistedJob.status = "complete";
@@ -437,7 +473,7 @@ test("markdown and html exports are zip packages with local screenshot assets", 
   assert.equal(createResponse.status, 202);
   const createdJob = await createResponse.json();
 
-  const jobDir = path.join(generatedRoot, "reports", createdJob.id);
+  const jobDir = path.join(generatedRoot, "reports", reportStorageKey(createdJob));
   const screenshotDir = path.join(jobDir, "screenshots");
   await mkdir(screenshotDir, { recursive: true });
   await writeFile(path.join(screenshotDir, "example.png"), "fake screenshot image");
@@ -476,7 +512,7 @@ test("markdown and html exports are zip packages with local screenshot assets", 
         source: "https://web.archive.org/web/20010101000000/http://example.net/",
         original: "http://example.net/",
         screenshotStatus: "rendered",
-        screenshotUrl: `/generated/reports/${createdJob.id}/screenshots/example.png`,
+        screenshotUrl: `/generated/reports/${reportStorageKey(createdJob)}/screenshots/example.png`,
         screenshotError: null,
         screenshotQuality: {
           bytes: 100,
@@ -545,7 +581,7 @@ test("entry curation can replace the selected screenshot for the same year", asy
     source: "https://web.archive.org/web/20010101000000/http://example.net/",
     original: "http://example.net/",
     screenshotStatus: "rendered",
-    screenshotUrl: `/generated/reports/${createdJob.id}/screenshots/first.png`,
+    screenshotUrl: `/generated/reports/${reportStorageKey(createdJob)}/screenshots/first.png`,
     screenshotError: null,
     screenshotQuality: {
       bytes: 100,
@@ -567,7 +603,7 @@ test("entry curation can replace the selected screenshot for the same year", asy
     techStack: "Needs render review",
     source: "https://web.archive.org/web/20010601000000/http://example.net/",
     original: "http://example.net/",
-    screenshotUrl: `/generated/reports/${createdJob.id}/screenshots/better.png`,
+    screenshotUrl: `/generated/reports/${reportStorageKey(createdJob)}/screenshots/better.png`,
     screenshotQuality: {
       bytes: 200,
       width: 120,
@@ -578,7 +614,7 @@ test("entry curation can replace the selected screenshot for the same year", asy
     }
   };
 
-  const jobFile = path.join(generatedRoot, "reports", createdJob.id, "job.json");
+  const jobFile = path.join(generatedRoot, "reports", reportStorageKey(createdJob), "job.json");
   await waitForFile(jobFile);
   const persistedJob = JSON.parse(await readFile(jobFile, "utf8"));
   Object.assign(persistedJob, {
@@ -632,4 +668,113 @@ test("entry curation can replace the selected screenshot for the same year", asy
   assert.equal(updatedJob.report.curatedEntries[0].techStack, "Static HTML");
   assert.equal(updatedJob.report.stats.selectedCount, 1);
   assert.match(updatedJob.message, /Selected 2001-06-01 screenshot/);
+});
+
+test("entry curation can choose a non-first timeline thumbnail", async (t) => {
+  const { baseUrl, generatedRoot } = await startTestServerContext(t, testPort + 11, {
+    RETROSITE_RUNNER_MODE: "external"
+  });
+
+  const createResponse = await fetch(`${baseUrl}/api/reports`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      url: "example.net",
+      screenshotLimit: 2
+    })
+  });
+  assert.equal(createResponse.status, 202);
+  const createdJob = await createResponse.json();
+
+  const firstEntry = {
+    timestamp: "20010101000000",
+    date: "2001-01-01",
+    title: "First capture",
+    notes: "",
+    techStack: "Static HTML",
+    source: "https://web.archive.org/web/20010101000000/http://example.net/",
+    original: "http://example.net/",
+    screenshotStatus: "rendered",
+    screenshotUrl: `/generated/reports/${reportStorageKey(createdJob)}/screenshots/first.png`,
+    screenshotError: null,
+    screenshotQuality: {
+      bytes: 100,
+      width: 100,
+      height: 100,
+      qualityScore: 50,
+      classification: "usable",
+      reasons: []
+    },
+    replacementOf: null,
+    replacementAttempts: []
+  };
+  const secondEntry = {
+    ...firstEntry,
+    timestamp: "20020101000000",
+    date: "2002-01-01",
+    title: "Better thumbnail",
+    source: "https://web.archive.org/web/20020101000000/http://example.net/",
+    screenshotUrl: `/generated/reports/${reportStorageKey(createdJob)}/screenshots/second.png`
+  };
+
+  const jobFile = path.join(generatedRoot, "reports", reportStorageKey(createdJob), "job.json");
+  await waitForFile(jobFile);
+  const persistedJob = JSON.parse(await readFile(jobFile, "utf8"));
+  Object.assign(persistedJob, {
+    status: "complete",
+    stage: "complete",
+    progress: 100,
+    message: "Worker finished the generated report.",
+    updatedAt: "2026-04-30T00:00:00.000Z"
+  });
+  persistedJob.report = {
+    title: "example.net visual timeline draft",
+    summary: "Worker-generated draft.",
+    publicationStatus: "draft",
+    publishedAt: null,
+    stats: {
+      captureCount: 2,
+      candidateCount: 2,
+      yearCount: 2,
+      range: "2001-2002",
+      renderedCount: 2,
+      usableRenderCount: 2,
+      selectedCount: 2
+    },
+    entries: [firstEntry, secondEntry],
+    curatedEntries: [firstEntry, secondEntry]
+  };
+  await writeFile(jobFile, JSON.stringify(persistedJob, null, 2), "utf8");
+
+  const refreshResponse = await fetch(`${baseUrl}/api/reports/${createdJob.id}`);
+  assert.equal(refreshResponse.status, 200);
+
+  const defaultListResponse = await fetch(`${baseUrl}/api/reports?limit=10`);
+  assert.equal(defaultListResponse.status, 200);
+  const defaultList = await defaultListResponse.json();
+  const defaultSummary = defaultList.jobs.find((job) => job.id === createdJob.id);
+  assert.equal(defaultSummary.thumbnailUrl, firstEntry.screenshotUrl);
+
+  const thumbnailResponse = await fetch(`${baseUrl}/api/reports/${createdJob.id}/entries`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      timestamp: secondEntry.timestamp,
+      original: secondEntry.original,
+      thumbnail: true
+    })
+  });
+  assert.equal(thumbnailResponse.status, 200);
+  const updatedJob = await thumbnailResponse.json();
+  assert.equal(updatedJob.report.thumbnailEntryKey, `${secondEntry.timestamp}:${secondEntry.original}`);
+
+  const listResponse = await fetch(`${baseUrl}/api/reports?limit=10`);
+  assert.equal(listResponse.status, 200);
+  const list = await listResponse.json();
+  const summary = list.jobs.find((job) => job.id === createdJob.id);
+  assert.equal(summary.thumbnailUrl, secondEntry.screenshotUrl);
 });

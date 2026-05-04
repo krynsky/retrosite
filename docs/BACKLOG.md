@@ -1,68 +1,83 @@
 # Retrosite Backlog
 
-This backlog is organized for the next agents working across Codex, Claude Code, and GitHub.
+This backlog tracks active follow-up work. It intentionally excludes finished seed-report behavior, already-shipped timeline publishing steps, and maintainer-only demo publishing details.
 
-## MVP Next
+## Local App Next
 
-- Add deterministic tech-stack inference for generated reports.
-  - Inspect Wayback replay HTML and source paths.
-  - Detect WordPress versions from `meta generator`, script/style paths, REST links, and common asset folders.
-  - Detect WordPress themes and likely plugins from `/wp-content/themes/` and `/wp-content/plugins/`.
-  - Detect obvious static/front-end stacks such as FrontPage, Classic ASP, jQuery, Bootstrap, Squarespace, Wix, Webflow, and custom static HTML.
-  - Store a confidence/caveat string instead of pretending weak signals are certain.
-  - Add tests with fixture HTML/source snippets.
-- Improve generated title and notes creation.
-  - Replace generic `YYYY candidate homepage` labels with better era labels.
-  - Use domain/page title/header signals when available.
-  - Keep annotations editable.
-- Improve weak-capture review.
-  - Show why a capture was considered weak.
-  - Surface attempted replacements.
-  - Allow a user to include a weak capture intentionally.
+- Improve generated entry titles and notes.
+  - Replace remaining generic `YYYY candidate homepage` labels with better era labels.
+  - Use page title, header, visible navigation, and dominant content signals when available.
+  - Keep all generated annotations editable in admin mode.
+- Improve tech-stack inference evidence and coverage.
+  - Keep the current WordPress, FrontPage, Classic ASP, jQuery, Bootstrap, Squarespace, Wix, Webflow, and static HTML detection.
+  - Store the evidence behind each detection, such as `meta generator`, source path, theme path, plugin path, or repeated `.asp` links.
+  - Add a human-readable caveat when detection is inferred or weak.
+  - Add fixture tests from real captures, especially old personal sites, hosted blogs, and sites with mixed legacy/new platform signals.
+  - Consider grouping noisy plugin lists so timeline titles stay readable.
+- Improve curation QA for generated reports.
+  - Make weak-capture reasons and replacement attempts easier to scan across a whole report.
+  - Add side-by-side review for alternate captures in the same year.
+  - Allow manual screenshot upload or replacement when Wayback capture quality is poor.
+  - Preserve the existing ability to include/exclude entries, swap same-year captures, edit text, and choose a non-first timeline thumbnail.
+- Add per-report generation settings.
+  - Max screenshots.
+  - Date range.
+  - Homepage path.
+  - URL variants.
+- Polish generated exports so Markdown and HTML packages keep matching the in-app report style.
+
+## Test Coverage
+
 - Add focused browser tests for:
-  - Home create form.
+  - Home request/create flow.
   - Generated job progress.
   - Generated edit form.
-  - Generated share page.
-  - Markdown and HTML exports.
-- Polish generated exports so they match the in-app report style more closely.
+  - Timeline image modal.
+  - Version list and delete controls.
+  - Thumbnail selection.
+  - Markdown and HTML export downloads.
+- Keep API shape tests covering:
+  - Request-only submissions.
+  - Report version lookup.
+  - Seed report absence.
+  - Entry curation.
+  - Thumbnail selection.
+  - Export packaging.
 
 ## Hosting And Operations
 
-- Add a durable storage strategy.
+- Add a durable storage strategy if hosted generation is enabled.
   - Short term: mounted volume for `server/generated/`.
-  - Later: database for job metadata plus object storage for screenshots/exports.
+  - Later: database for job metadata plus object storage for screenshots and exports.
 - Add a real queue if multiple workers are needed.
-- Add cleanup/retention rules for generated screenshots.
+- Add cleanup and retention rules for generated screenshots, exports, request files, and notification outbox files.
 - Add structured logs and error reporting.
-- Add hosted Chrome/Chromium provisioning notes.
+- Add hosted Chrome/Chromium provisioning notes for non-local deployments.
 - Add health checks for API, worker, and screenshot runtime.
 - Add GitHub Actions for `npm test`, `npm run check`, and `npm run build`.
 - Add final Pinokio launcher scripts after the public GitHub repo URL is chosen.
-- Verify Vercel request-only deployment with GitHub Issue creation.
+- Keep request-only demo configuration smoke-tested after deploys.
 
-## Product
+## Future Hosted Product
 
-- Add user accounts and private report ownership.
-- Add permissions around edit/publish/share endpoints.
-- Add billing or quota limits before public launch.
-- Add a report library/history page.
-- Add per-report settings for max screenshots, date range, homepage path, and URL variants.
-- Add a public request review workflow for the owner to triage submitted domains.
-- Add manual screenshot upload/replacement.
-- Add report duplication/forking.
+- Add user accounts and private report ownership if Retrosite becomes a public hosted generator.
+- Add authenticated permissions around edit, publish, share, and delete endpoints before exposing them publicly.
+- Add billing, quotas, or rate limits before public hosted generation.
+- Add a richer report library with sorting, filtering, and report metadata beyond the current timeline list.
+- Add a public request review workflow for owner triage.
+- Add report duplication and forking.
 
 ## Deferred Email Work
 
-Email notifications are intentionally out of the MVP UI for now.
+Email delivery is intentionally out of the MVP UI for now. The app can write local notification outbox records, but it does not send transactional email.
 
 When revisiting:
 
-- Add optional email capture on job creation.
-- Send job-complete/job-needs-review notifications.
-- Add unsubscribe/suppression handling.
+- Add optional email capture on job creation only where appropriate.
+- Send job-complete and job-needs-review notifications.
+- Add unsubscribe and suppression handling.
 - Keep notification state out of public generated reports.
-- Consider transactional email provider setup and local dev mocks.
+- Add provider setup and local dev mocks.
 
 ## Optional LLM Layer
 
@@ -72,18 +87,18 @@ Useful later additions:
 
 - Draft better era titles and descriptions.
 - Explain visible design changes from screenshots.
-- Summarize likely tech stack evidence.
+- Summarize likely tech-stack evidence.
 - Generate report intros.
 - Suggest omitted eras or suspicious gaps.
 
-LLM output should remain editable and should include evidence/caveats.
+LLM output should remain editable and should include evidence and caveats.
 
 ## Quality And Security
 
 - Add accessibility pass for all report and form controls.
 - Add mobile layout QA.
-- Add input validation and URL/domain hardening.
+- Add stronger input validation and URL/domain hardening.
 - Add SSRF-aware network restrictions before public hosting.
-- Add rate limits suitable for production.
+- Add production-grade rate limits before public hosted generation.
 - Add auth before exposing edit endpoints publicly.
 - Add a security review for generated HTML export.

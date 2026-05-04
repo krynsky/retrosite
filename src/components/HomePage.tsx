@@ -1,9 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import type { ReportJobSummary, TimelineRequest } from "../types";
+import type { DepthMode, ReportJobSummary, TimelineRequest } from "../types";
 import { useAppConfig } from "../useAppConfig";
 import { timelinePath } from "../helpers";
-import { seedReportCard } from "../reportCards";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 import { Polaroid } from "./primitives/Polaroid";
@@ -31,6 +30,7 @@ export function HomePage() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState("");
+  const [depthMode, setDepthMode] = useState<DepthMode>("adaptive");
   const { config, loaded: configLoaded } = useAppConfig();
   const [recentJobs, setRecentJobs] = useState<ReportJobSummary[]>([]);
   const [recentError, setRecentError] = useState("");
@@ -128,7 +128,7 @@ export function HomePage() {
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: domain.trim() })
+        body: JSON.stringify({ url: domain.trim(), depthMode })
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -157,8 +157,7 @@ export function HomePage() {
     }
   }
 
-  const hasGeneratedKrynsky = recentJobs.some((job) => job.host === "krynsky.com");
-  const allCards = hasGeneratedKrynsky ? recentJobs : [seedReportCard(), ...recentJobs];
+  const allCards = recentJobs;
   const displayCards = allCards.slice(0, HOME_CARD_LIMIT);
   const totalSaved = allCards.length;
 
@@ -182,6 +181,21 @@ export function HomePage() {
               required
               aria-label="Domain or path"
             />
+            {!requestOnlyMode && (
+              <label className="depth-field">
+                <span className="depth-field-label">DEPTH</span>
+                <select
+                  value={depthMode}
+                  onChange={(event) => setDepthMode(event.target.value as DepthMode)}
+                  aria-label="Timeline depth"
+                >
+                  <option value="adaptive">Adaptive</option>
+                  <option value="quick">Quick</option>
+                  <option value="standard">Standard</option>
+                  <option value="deep">Deep</option>
+                </select>
+              </label>
+            )}
             <StampButton
               type="submit"
               tone="primary"
@@ -236,7 +250,7 @@ export function HomePage() {
               key={job.id}
               job={job}
               admin={isAdmin}
-              onDelete={job.id === "krynsky-com-seed" ? undefined : handleDelete}
+              onDelete={handleDelete}
             />
           ))}
         </div>

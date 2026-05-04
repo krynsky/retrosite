@@ -25,14 +25,25 @@ const clientDistRoot = path.join(__dirname, "..", "dist");
 const clientIndexFile = path.join(clientDistRoot, "index.html");
 const defaultScreenshotLimit = Number(process.env.RETROSITE_SCREENSHOT_LIMIT ?? 35);
 const maxScreenshotLimit = Number(process.env.RETROSITE_MAX_SCREENSHOT_LIMIT ?? 50);
+const quickScreenshotLimit = Number(process.env.RETROSITE_QUICK_SCREENSHOT_LIMIT ?? 10);
+const adaptiveMediumScreenshotLimit = Number(process.env.RETROSITE_ADAPTIVE_MEDIUM_SCREENSHOT_LIMIT ?? 24);
+const adaptiveLargeScreenshotLimit = Number(process.env.RETROSITE_ADAPTIVE_LARGE_SCREENSHOT_LIMIT ?? 14);
+const adaptiveHugeScreenshotLimit = Number(process.env.RETROSITE_ADAPTIVE_HUGE_SCREENSHOT_LIMIT ?? 8);
 const candidateRenderMultiplier = Number(process.env.RETROSITE_CANDIDATE_RENDER_MULTIPLIER ?? 2);
 const candidateRenderCap = Number(process.env.RETROSITE_CANDIDATE_RENDER_LIMIT ?? 60);
 const perYearCandidateLimit = Number(process.env.RETROSITE_PER_YEAR_CANDIDATE_LIMIT ?? 4);
 const replacementLimit = Number(process.env.RETROSITE_REPLACEMENT_LIMIT ?? 3);
-const cdxTimeoutMs = Number(process.env.RETROSITE_CDX_TIMEOUT_MS ?? 45000);
-const cdxRetryCount = Number(process.env.RETROSITE_CDX_RETRIES ?? 2);
+const cdxTimeoutMs = Number(process.env.RETROSITE_CDX_TIMEOUT_MS ?? 25000);
+const cdxRetryCount = Number(process.env.RETROSITE_CDX_RETRIES ?? 1);
 const cdxConcurrency = Number(process.env.RETROSITE_CDX_CONCURRENCY ?? 3);
 const cdxRetryDelayMs = Number(process.env.RETROSITE_CDX_RETRY_DELAY_MS ?? 1200);
+const cdxFallbackStartYear = Number(process.env.RETROSITE_CDX_FALLBACK_START_YEAR ?? 1996);
+const cdxFallbackWindowYears = Number(process.env.RETROSITE_CDX_FALLBACK_WINDOW_YEARS ?? 5);
+const cdxFallbackLimit = Number(process.env.RETROSITE_CDX_FALLBACK_LIMIT ?? 1000);
+const cdxFallbackRetryCount = Number(process.env.RETROSITE_CDX_FALLBACK_RETRIES ?? 0);
+const cdxFallbackMaxQueries = Number(process.env.RETROSITE_CDX_FALLBACK_MAX_QUERIES ?? 4);
+const renderNavigationRetryCount = Number(process.env.RETROSITE_RENDER_NAV_RETRIES ?? 2);
+const renderNavigationRetryDelayMs = Number(process.env.RETROSITE_RENDER_NAV_RETRY_DELAY_MS ?? 1800);
 const maxActiveJobs = Number(process.env.RETROSITE_MAX_ACTIVE_JOBS ?? 3);
 const createRateLimit = Number(process.env.RETROSITE_CREATE_RATE_LIMIT ?? 12);
 const createRateWindowMs = Number(process.env.RETROSITE_CREATE_RATE_WINDOW_MS ?? 15 * 60 * 1000);
@@ -283,14 +294,142 @@ function queueMetadata(job) {
   };
 }
 
-function createQueuedReportJob({ host, screenshotLimit, notifyEmail, version = 1, message = "Report job created." }) {
-  const now = new Date().toISOString();
+function storageBaseForTarget(target) {
+  return String(target ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/[^a-z0-9.]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "report";
+}
+
+function createReportStorageKey(target, id) {
+  return `${storageBaseForTarget(target)}--${String(id).slice(0, 8)}`;
+}
+
+function timelineRoutePath(target) {
+  return `/timeline/${String(target)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+}
+
+function reportStorageKey(job) {
+  return job?.storageKey ?? job?.storageSlug ?? job?.id ?? String(job);
+}
+
+export function normalizeDepthMode(value) {
+  const mode = String(value ?? "adaptive").toLowerCase();
+  return ["adaptive", "quick", "standard", "deep"].includes(mode) ? mode : "adaptive";
+}
+
+export function depthScreenshotLimit(depthMode) {
+  switch (normalizeDepthMode(depthMode)) {
+    case "quick":
+      return normalizeScreenshotLimit(quickScreenshotLimit);
+    case "deep":
+      return normalizeScreenshotLimit(maxScreenshotLimit);
+    case "standard":
+    case "adaptive":
+    default:
+      return normalizeScreenshotLimit(defaultScreenshotLimit);
+  }
+}
+
+function archiveSizeForCaptureCount(captureCount) {
+  if (captureCount >= 10000) return "huge";
+  if (captureCount >= 1500) return "large";
+  if (captureCount >= 250) return "medium";
+  return "small";
+}
+
+function adaptiveLimitForArchiveSize(archiveSize) {
+  switch (archiveSize) {
+    case "huge":
+      return normalizeScreenshotLimit(adaptiveHugeScreenshotLimit);
+    case "large":
+      return normalizeScreenshotLimit(adaptiveLargeScreenshotLimit);
+    case "medium":
+      return normalizeScreenshotLimit(adaptiveMediumScreenshotLimit);
+    case "small":
+    default:
+      return normalizeScreenshotLimit(defaultScreenshotLimit);
+  }
+}
+
+export function adaptiveArchiveProfile({ depthMode = "adaptive", discovery }) {
+  const normalizedDepthMode = normalizeDepthMode(depthMode);
+  const captureCount = Number(discovery?.captureCount ?? 0);
+  const failedQueryCount = Array.isArray(discovery?.variantStatus)
+    ? discovery.variantStatus.filter((status) => status.status === "failed").length
+    : 0;
+  const archiveSize = archiveSizeForCaptureCount(captureCount);
+
+  if (normalizedDepthMode !== "adaptive") {
+    const screenshotLimit = depthScreenshotLimit(normalizedDepthMode);
+    return {
+      depthMode: normalizedDepthMode,
+      archiveSize,
+      captureCount,
+      failedQueryCount,
+      screenshotLimit,
+      reason:
+        normalizedDepthMode === "quick"
+          ? "Quick depth selected. Retrosite will render fewer captures for a faster, more reliable run."
+          : normalizedDepthMode === "deep"
+          ? "Deep depth selected. Retrosite will render more captures and may take longer."
+          : "Standard depth selected. Retrosite will use the normal render budget."
+    };
+  }
+
+  let screenshotLimit = adaptiveLimitForArchiveSize(archiveSize);
+  let reason =
+    archiveSize === "huge"
+      ? "Huge archive detected. Retrosite reduced depth aggressively to keep the job reliable."
+      : archiveSize === "large"
+      ? "Large archive detected. Retrosite reduced depth to keep the job reliable."
+      : archiveSize === "medium"
+      ? "Medium archive detected. Retrosite used a balanced depth for this run."
+      : "Small archive detected. Retrosite kept standard depth for this run.";
+
+  if (failedQueryCount > 0 && captureCount > 0) {
+    screenshotLimit = Math.min(screenshotLimit, normalizeScreenshotLimit(18));
+    reason = "Wayback was partially unstable. Retrosite used a safer depth for this run.";
+  }
+
   return {
-    id: randomUUID(),
+    depthMode: "adaptive",
+    archiveSize,
+    captureCount,
+    failedQueryCount,
+    screenshotLimit,
+    reason
+  };
+}
+
+function createQueuedReportJob({
+  host,
+  screenshotLimit,
+  depthMode = "adaptive",
+  notifyEmail,
+  version = 1,
+  message = "Report job created."
+}) {
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  const normalizedDepthMode = normalizeDepthMode(depthMode);
+  return {
+    id,
+    storageKey: createReportStorageKey(host, id),
     target: host,
     host,
     version,
+    depthMode: normalizedDepthMode,
     screenshotLimit,
+    archiveProfile: null,
     status: "queued",
     stage: "queued",
     progress: 0,
@@ -312,16 +451,26 @@ function createQueuedReportJob({ host, screenshotLimit, notifyEmail, version = 1
   };
 }
 
-function timelineRoutePath(target) {
-  return `/timeline/${String(target)
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")}`;
-}
-
 function waybackReplayUrl(timestamp, original) {
   return `https://web.archive.org/web/${timestamp}if_/${original}`;
+}
+
+export function waybackReplayUrlVariants(timestamp, original) {
+  return [
+    `https://web.archive.org/web/${timestamp}if_/${original}`,
+    `https://web.archive.org/web/${timestamp}id_/${original}`,
+    `https://web.archive.org/web/${timestamp}/${original}`
+  ];
+}
+
+export function shouldUseCdpScreenshotFallback(error) {
+  return /page\.screenshot:[\s\S]*Timeout[\s\S]*waiting for fonts to load/i.test(errorMessage(error));
+}
+
+export function shouldRetryReplayNavigation(error) {
+  return /page\.goto:[\s\S]*(net::ERR_CONNECTION_REFUSED|net::ERR_HTTP2_SERVER_REFUSED_STREAM|Timeout \d+ms exceeded)/i.test(
+    errorMessage(error)
+  );
 }
 
 function timestampDate(timestamp) {
@@ -352,12 +501,12 @@ async function mapWithConcurrency(items, limit, task) {
   return results;
 }
 
-function reportOutputDir(jobId) {
-  return path.join(generatedRoot, "reports", jobId);
+function reportOutputDir(job) {
+  return path.join(generatedRoot, "reports", reportStorageKey(job));
 }
 
-function reportJobFile(jobId) {
-  return path.join(reportOutputDir(jobId), "job.json");
+function reportJobFile(job) {
+  return path.join(reportOutputDir(job), "job.json");
 }
 
 function normalizeScreenshotLimit(value) {
@@ -600,9 +749,50 @@ async function collectRenderDiagnostics(page) {
   });
 }
 
-async function queryCdxOnce(urlPattern) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), cdxTimeoutMs);
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error ?? "Unknown error");
+}
+
+export function cdxFallbackWindows({
+  fromYear = cdxFallbackStartYear,
+  toYear = new Date().getUTCFullYear(),
+  windowYears = cdxFallbackWindowYears
+} = {}) {
+  const startYear = Number.isFinite(Number(fromYear)) ? Number(fromYear) : 1996;
+  const endYear = Number.isFinite(Number(toYear)) ? Number(toYear) : new Date().getUTCFullYear();
+  const span = Math.max(1, Number.isFinite(Number(windowYears)) ? Number(windowYears) : 5);
+  const windows = [];
+
+  for (let from = startYear; from <= endYear; from += span) {
+    const to = Math.min(from + span - 1, endYear);
+    windows.push({
+      from: String(from),
+      to: String(to)
+    });
+  }
+
+  return windows;
+}
+
+export function cdxFallbackQueryWindows({
+  fromYear = cdxFallbackStartYear,
+  toYear = new Date().getUTCFullYear(),
+  windowYears = cdxFallbackWindowYears,
+  limit = cdxFallbackLimit,
+  maxQueries = cdxFallbackMaxQueries
+} = {}) {
+  const queries = [
+    { limit },
+    ...cdxFallbackWindows({ fromYear, toYear, windowYears }).map((window) => ({
+      ...window,
+      limit
+    }))
+  ];
+  const max = Math.max(1, Number.isFinite(Number(maxQueries)) ? Number(maxQueries) : queries.length);
+  return queries.slice(0, max);
+}
+
+export function cdxQueryParams(urlPattern, window = null) {
   const params = new URLSearchParams({
     url: urlPattern,
     matchType: "exact",
@@ -611,6 +801,22 @@ async function queryCdxOnce(urlPattern) {
     filter: "statuscode:200",
     collapse: "digest"
   });
+  if (window?.from) {
+    params.set("from", window.from);
+  }
+  if (window?.to) {
+    params.set("to", window.to);
+  }
+  if (window?.limit) {
+    params.set("limit", String(window.limit));
+  }
+  return params;
+}
+
+async function queryCdxOnce(urlPattern, window = null) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), cdxTimeoutMs);
+  const params = cdxQueryParams(urlPattern, window);
   try {
     const response = await fetch(`https://web.archive.org/cdx?${params.toString()}`, {
       headers: { "user-agent": "Retrosite discovery prototype" },
@@ -630,12 +836,70 @@ async function queryCdxOnce(urlPattern) {
     return captures.map((row) => Object.fromEntries(header.map((key, index) => [key, row[index]])));
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Wayback CDX timed out for ${urlPattern}`);
+      const range = window ? ` (${window.from}-${window.to})` : "";
+      throw new Error(`Wayback CDX timed out for ${urlPattern}${range}`);
     }
     throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function queryCdxFallbackWindows(urlPattern, broadError) {
+  const windows = cdxFallbackQueryWindows();
+  const windowResults = await mapWithConcurrency(windows, cdxConcurrency, async (window) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= cdxFallbackRetryCount + 1; attempt += 1) {
+      try {
+        const captures = await queryCdxOnce(urlPattern, window);
+        return {
+          status: "ok",
+          window,
+          captureCount: captures.length,
+          captures,
+          error: null
+        };
+      } catch (error) {
+        lastError = error;
+        if (attempt <= cdxFallbackRetryCount) {
+          await delay(cdxRetryDelayMs * attempt);
+        }
+      }
+    }
+
+    return {
+      status: "failed",
+      window,
+      captureCount: 0,
+      captures: [],
+      error: errorMessage(lastError)
+    };
+  });
+
+  const successes = windowResults.filter((result) => result.status === "ok");
+  if (successes.length === 0) {
+    return null;
+  }
+
+  const failures = windowResults.filter((result) => result.status === "failed");
+  const captureMap = new Map();
+  for (const capture of successes.flatMap((result) => result.captures)) {
+    captureMap.set(`${capture.timestamp}:${capture.original}`, capture);
+  }
+  const captures = [...captureMap.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  return {
+    variant: urlPattern,
+    status: "ok",
+    attempts: cdxRetryCount + 1 + windows.length,
+    captureCount: captures.length,
+    captures,
+    error:
+      failures.length > 0
+        ? `Broad query failed (${errorMessage(broadError)}). ${failures.length} fallback CDX queries also failed.`
+        : `Broad query failed (${errorMessage(broadError)}). Retrosite recovered with bounded CDX fallback queries.`,
+    fallback: true
+  };
 }
 
 async function queryCdx(urlPattern) {
@@ -659,13 +923,18 @@ async function queryCdx(urlPattern) {
     }
   }
 
+  const fallbackResult = await queryCdxFallbackWindows(urlPattern, lastError);
+  if (fallbackResult) {
+    return fallbackResult;
+  }
+
   return {
     variant: urlPattern,
     status: "failed",
     attempts: cdxRetryCount + 1,
     captureCount: 0,
     captures: [],
-    error: lastError instanceof Error ? lastError.message : `Unable to query ${urlPattern}`
+    error: errorMessage(lastError)
   };
 }
 
@@ -772,6 +1041,7 @@ async function discoverCaptures(target) {
   const variantResults = await mapWithConcurrency(variants, cdxConcurrency, queryCdx);
   const successes = variantResults.filter((result) => result.status === "ok");
   const failures = variantResults.filter((result) => result.status === "failed");
+  const fallbackRecoveries = successes.filter((result) => result.fallback);
 
   if (successes.length === 0) {
     const failureSummary = failures
@@ -792,8 +1062,15 @@ async function discoverCaptures(target) {
     queriedVariants: variants,
     variantStatus: variantResults.map(({ captures: _captures, ...result }) => result),
     warning:
-      failures.length > 0
-        ? `${failures.length} Wayback variant ${failures.length === 1 ? "query" : "queries"} failed, but Retrosite continued with the captures it could retrieve.`
+      failures.length > 0 || fallbackRecoveries.length > 0
+        ? [
+            failures.length > 0
+              ? `${failures.length} Wayback variant ${failures.length === 1 ? "query" : "queries"} failed`
+              : null,
+            fallbackRecoveries.length > 0
+              ? `${fallbackRecoveries.length} Wayback variant ${fallbackRecoveries.length === 1 ? "query was" : "queries were"} recovered with year-window fallback`
+              : null
+          ].filter(Boolean).join("; ") + ", but Retrosite continued with the captures it could retrieve."
         : null,
     captureCount: captures.length,
     yearSummary: summarizeCaptures(captures),
@@ -804,6 +1081,89 @@ async function discoverCaptures(target) {
       replayUrl: waybackReplayUrl(capture.timestamp, capture.original)
     }))
   };
+}
+
+function reusableDiscoveryCaptureCount(discovery) {
+  const captureCount = Number(discovery?.captureCount);
+  if (Number.isFinite(captureCount) && captureCount > 0) {
+    return captureCount;
+  }
+  return Array.isArray(discovery?.captures) ? discovery.captures.length : 0;
+}
+
+function normalizeReusableDiscovery(discovery, sourceJob, discoveryError) {
+  const cachedDiscovery = JSON.parse(JSON.stringify(discovery));
+  const captures = Array.isArray(cachedDiscovery.captures)
+    ? cachedDiscovery.captures
+        .filter((capture) => capture?.timestamp && capture?.original)
+        .map((capture) => ({
+          ...capture,
+          date: capture.date ?? timestampDate(capture.timestamp),
+          replayUrl: waybackReplayUrl(capture.timestamp, capture.original)
+        }))
+    : [];
+  const candidates = Array.isArray(cachedDiscovery.candidates) && cachedDiscovery.candidates.length > 0
+    ? cachedDiscovery.candidates
+    : pickCandidateEras(captures);
+
+  const reuseWarning = [
+    `Reused cached Wayback discovery from report job ${sourceJob.id}`,
+    sourceJob.updatedAt ? `updated ${sourceJob.updatedAt}` : null,
+    `because live discovery failed: ${errorMessage(discoveryError)}`
+  ].filter(Boolean).join(" ");
+
+  return {
+    ...cachedDiscovery,
+    cachedFromJobId: sourceJob.id,
+    cachedFromVersion: sourceJob.version ?? null,
+    captureCount: reusableDiscoveryCaptureCount(cachedDiscovery),
+    yearSummary: Array.isArray(cachedDiscovery.yearSummary) && cachedDiscovery.yearSummary.length > 0
+      ? cachedDiscovery.yearSummary
+      : summarizeCaptures(captures),
+    candidates: candidates.map((candidate) => ({
+      ...candidate,
+      date: candidate.date ?? timestampDate(candidate.timestamp),
+      replayUrl: candidate.replayUrl ?? waybackReplayUrl(candidate.timestamp, candidate.original)
+    })),
+    captures,
+    warning: [cachedDiscovery.warning, reuseWarning].filter(Boolean).join(" ")
+  };
+}
+
+function jobTargetKey(job) {
+  try {
+    return normalizeReportTarget(job?.target ?? job?.host ?? "").target;
+  } catch {
+    return null;
+  }
+}
+
+export function findReusableDiscoveryForJob(job, jobs = reportJobs.values(), discoveryError = null) {
+  const targetKey = jobTargetKey(job);
+  if (!targetKey) {
+    return null;
+  }
+
+  const reusableJobs = [...jobs]
+    .filter((candidateJob) =>
+      candidateJob?.id !== job?.id &&
+      jobTargetKey(candidateJob) === targetKey &&
+      reusableDiscoveryCaptureCount(candidateJob.discovery) > 0
+    )
+    .sort((a, b) => {
+      const timeDiff = Date.parse(b.updatedAt ?? "") - Date.parse(a.updatedAt ?? "");
+      if (Number.isFinite(timeDiff) && timeDiff !== 0) {
+        return timeDiff;
+      }
+      return (b.version ?? 0) - (a.version ?? 0);
+    });
+
+  const sourceJob = reusableJobs[0];
+  if (!sourceJob) {
+    return null;
+  }
+
+  return normalizeReusableDiscovery(sourceJob.discovery, sourceJob, discoveryError);
 }
 
 function createDraftReport(discovery) {
@@ -825,7 +1185,7 @@ function createDraftReport(discovery) {
       timestamp: candidate.timestamp,
       date: candidate.date,
       title: "Candidate homepage capture",
-      notes: candidate.reason,
+      notes: "",
       techStack: "Needs render review",
       source: candidate.replayUrl,
       original: candidate.original,
@@ -848,12 +1208,7 @@ function curatedEntryCopy(entry) {
   return {
     ...entry,
     title: `${entry.date.slice(0, 4)} candidate homepage`,
-    notes:
-      entry.screenshotQuality?.classification === "weak"
-        ? `Rendered, but flagged for review: ${entry.screenshotQuality.reasons.join(", ")}.`
-        : entry.replacementOf
-          ? `Replacement capture selected after the first ${entry.date.slice(0, 4)} render looked weak.`
-          : "Rendered candidate selected for the generated draft report."
+    notes: visibleEntryNotes(entry.notes)
   };
 }
 
@@ -861,9 +1216,9 @@ function visualEraKey(entry) {
   const core = entry.techStack.split(" · ")[0];
   const parts = core.split(",").map((s) => s.trim());
   const cms = parts.find((p) => /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(p)) ?? "";
-  const theme = parts.find((p) => /^theme:/i.test(p)) ?? "";
+  const theme = parts.find((p) => /^theme:/i.test(p) || /\btheme$/i.test(p)) ?? "";
   if (!theme) return null;
-  return `${cms}|${theme}`.toLowerCase();
+  return `${cms.replace(/\s+\d.*$/, "")}|${theme}`.toLowerCase();
 }
 
 function deduplicateByEra(entries) {
@@ -980,7 +1335,7 @@ function captureToReportEntry(capture, reason, replacementOf = null) {
     timestamp: capture.timestamp,
     date: capture.date,
     title: "Candidate homepage capture",
-    notes: reason,
+    notes: "",
     techStack: "Needs render review",
     source: capture.replayUrl,
     original: capture.original,
@@ -1093,9 +1448,11 @@ function shouldRepairRenderedEntry(entry) {
 }
 
 function minimumUsableScreenshotCount(job) {
+  const discoveredYearCount = Number(job.report?.stats?.yearCount);
   const possibleCount = Math.min(
     normalizeScreenshotLimit(job.screenshotLimit),
-    job.report?.stats?.candidateCount ?? job.report?.entries?.length ?? 0
+    job.report?.stats?.candidateCount ?? job.report?.entries?.length ?? 0,
+    Number.isFinite(discoveredYearCount) && discoveredYearCount > 0 ? discoveredYearCount : Infinity
   );
 
   if (possibleCount <= 2) {
@@ -1128,12 +1485,12 @@ export function reportCompletionPatch(job) {
 }
 
 export function normalizeReportReadiness(job) {
-  if (job.status !== "complete" || !job.report) {
+  if ((job.status !== "complete" && job.status !== "incomplete") || !job.report) {
     return false;
   }
 
   const patch = reportCompletionPatch(job);
-  if (patch.status === "complete") {
+  if (patch.status === job.status && patch.stage === job.stage) {
     return false;
   }
 
@@ -1151,23 +1508,16 @@ async function renderEntryScreenshot({ context, job, entry, screenshotDir, index
   const page = await context.newPage();
   const filename = screenshotFilename(entry, index);
   const filePath = path.join(screenshotDir, filename);
-  const screenshotUrl = `/generated/reports/${job.id}/screenshots/${filename}`;
+  const screenshotUrl = `/generated/reports/${reportStorageKey(job)}/screenshots/${filename}`;
 
   try {
-    await page.goto(entry.source, {
-      waitUntil: "domcontentloaded",
-      timeout: 25000
-    });
-    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
-    await page.waitForTimeout(1200);
-    const diagnostics = await collectRenderDiagnostics(page);
-    await page.screenshot({ path: filePath, fullPage: true, timeout: 15000 });
-    const screenshot = await analyzeScreenshot(filePath);
-    const visuals = await scoreScreenshotVisuals(filePath);
+    const renderResult = await renderEntryScreenshotFile({ page, entry, filePath });
+    const { diagnostics, screenshot, visuals, source } = renderResult;
 
     const techStackResult = await inferTechStack(page).catch(() => null);
 
     entry.screenshotStatus = "rendered";
+    entry.source = source;
     entry.screenshotUrl = screenshotUrl;
     entry.screenshotError = null;
     entry.screenshotQuality = classifyRender({ screenshot, diagnostics, visualScore: visuals.score });
@@ -1184,9 +1534,94 @@ async function renderEntryScreenshot({ context, job, entry, screenshotDir, index
   }
 }
 
+function replaySourcesForEntry(entry) {
+  const sources = [entry.source, ...waybackReplayUrlVariants(entry.timestamp, entry.original)];
+  return [...new Set(sources.filter(Boolean))];
+}
+
+async function capturePageScreenshot(page, filePath) {
+  try {
+    await page.screenshot({ path: filePath, fullPage: true, timeout: 15000 });
+    return "playwright";
+  } catch (error) {
+    if (!shouldUseCdpScreenshotFallback(error)) {
+      throw error;
+    }
+    const session = await page.context().newCDPSession(page);
+    try {
+      const result = await session.send("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: true,
+        fromSurface: true
+      });
+      await writeFile(filePath, Buffer.from(result.data, "base64"));
+      return "cdp";
+    } finally {
+      await session.detach().catch(() => undefined);
+    }
+  }
+}
+
+async function gotoReplaySource(page, source) {
+  const maxAttempts = Math.max(
+    1,
+    (Number.isFinite(renderNavigationRetryCount) ? Math.max(Math.round(renderNavigationRetryCount), 0) : 2) + 1
+  );
+  const retryDelayMs = Number.isFinite(renderNavigationRetryDelayMs)
+    ? Math.max(Math.round(renderNavigationRetryDelayMs), 250)
+    : 1800;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await page.goto(source, {
+        waitUntil: "domcontentloaded",
+        timeout: 25000
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts || !shouldRetryReplayNavigation(error)) {
+        throw error;
+      }
+      await delay(retryDelayMs * attempt);
+    }
+  }
+
+  throw lastError;
+}
+
+async function renderEntryScreenshotFile({ page, entry, filePath }) {
+  const errors = [];
+  for (const source of replaySourcesForEntry(entry)) {
+    try {
+      await gotoReplaySource(page, source);
+      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => undefined);
+      await page.waitForTimeout(1200);
+      const diagnostics = await collectRenderDiagnostics(page);
+      const screenshotMethod = await capturePageScreenshot(page, filePath);
+      const screenshot = await analyzeScreenshot(filePath);
+      const visuals = await scoreScreenshotVisuals(filePath);
+      return {
+        source,
+        diagnostics: {
+          ...diagnostics,
+          screenshotMethod
+        },
+        screenshot,
+        visuals
+      };
+    } catch (error) {
+      errors.push(`${source}: ${errorMessage(error)}`);
+    }
+  }
+
+  throw new Error(errors.join("; "));
+}
+
 async function renderReportScreenshots(job) {
   const executablePath = chromeExecutablePath();
-  const screenshotDir = path.join(reportOutputDir(job.id), "screenshots");
+  const screenshotDir = path.join(reportOutputDir(job), "screenshots");
   await mkdir(screenshotDir, { recursive: true });
 
   const browser = await chromium.launch({
@@ -1331,6 +1766,7 @@ function publicJob(job) {
   }
   return {
     id: job.id,
+    storageKey: job.storageKey ?? null,
     target: job.target,
     host: job.host,
     version: job.version ?? 1,
@@ -1338,7 +1774,9 @@ function publicJob(job) {
     stage: job.stage,
     progress: job.progress,
     message: job.message,
+    depthMode: normalizeDepthMode(job.depthMode),
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
+    archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     events: job.events,
@@ -1351,13 +1789,22 @@ function publicJob(job) {
   };
 }
 
+function reportThumbnailEntry(job) {
+  const report = job.report;
+  const entries = [...(report?.curatedEntries ?? []), ...(report?.entries ?? [])];
+  const thumbnailKey = report?.thumbnailEntryKey ?? "";
+  return entries.find((entry) => thumbnailKey && entryKey(entry) === thumbnailKey && entry.screenshotUrl)
+    ?? entries.find((entry) => entry.screenshotUrl)
+    ?? null;
+}
+
 function publicJobSummary(job) {
   normalizeReportReadiness(job);
-  const renderedEntry = job.report?.curatedEntries?.find((entry) => entry.screenshotUrl)
-    ?? job.report?.entries?.find((entry) => entry.screenshotUrl);
+  const renderedEntry = reportThumbnailEntry(job);
 
   return {
     id: job.id,
+    storageKey: job.storageKey ?? null,
     target: job.target,
     host: job.host,
     version: job.version ?? 1,
@@ -1365,14 +1812,16 @@ function publicJobSummary(job) {
     stage: job.stage,
     progress: job.progress,
     message: job.message,
+    depthMode: normalizeDepthMode(job.depthMode),
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
+    archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     generatedReportUrl: timelineRoutePath(job.host),
     generatedShareUrl: `${timelineRoutePath(job.host)}/share`,
     stats: job.report?.stats ?? null,
     error: job.error,
-    thumbnailUrl: renderedEntry?.screenshotUrl ?? null,
+    thumbnailUrl: renderedEntry?.screenshotUrl ?? job.report?.thumbnailUrl ?? null,
     notifyEmail: job.notifyEmail ?? null,
     notificationStatus: job.notificationStatus ?? (job.notifyEmail ? "captured" : "not_requested"),
     ...queueMetadata(job)
@@ -1411,6 +1860,28 @@ function cleanEditableText(value, fallback, maxLength) {
   }
 
   return cleaned.slice(0, maxLength);
+}
+
+function cleanOptionalEditableText(value, maxLength) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function visibleEntryNotes(notes) {
+  const cleaned = String(notes ?? "").trim();
+  if (!cleaned) return "";
+
+  const generatedNotePatterns = [
+    /^Rendered candidate selected for the generated draft report\.$/i,
+    /^Rendered, but flagged for review:/i,
+    /^Replacement capture selected after the first \d{4} render looked weak\.$/i,
+    /^Default alternate note\.$/i
+  ];
+
+  return generatedNotePatterns.some((pattern) => pattern.test(cleaned)) ? "" : cleaned;
 }
 
 function absoluteLocalUrl(request, pathname) {
@@ -1553,17 +2024,19 @@ function buildReportMarkdown(job, screenshotPathsByEntry = new Map()) {
   for (const entry of entries) {
     const screenshotPath = screenshotPathsByEntry.get(entryKey(entry));
     const caveats = reportCaveats(entry);
+    const notes = visibleEntryNotes(entry.notes);
     lines.push(
-      `### ${entry.date}: ${entry.title}`,
+      `### ${entry.date}: ${entry.techStack}`,
       "",
       screenshotPath ? `![${entry.date} ${entry.title}](${screenshotPath})` : "_No exported screenshot file was available for this entry._",
       "",
-      `- Tech stack: ${entry.techStack}`,
+      `- Tech stack / title: ${entry.techStack}`,
       `- Source: [Wayback capture](${entry.source})`,
-      "",
-      entry.notes,
       ""
     );
+    if (notes) {
+      lines.push(notes, "");
+    }
     if (caveats.length > 0) {
       lines.push("Review notes:", "", ...caveats.map((caveat) => `- ${caveat}`), "");
     }
@@ -1595,13 +2068,10 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
   const timelineEntries = entries.map((entry) => ({
     date: entry.date,
     title: entry.title,
-    notes: entry.notes,
+    notes: visibleEntryNotes(entry.notes),
     techStack: entry.techStack,
     source: entry.source,
-    imageUrl: screenshotPathsByEntry.get(entryKey(entry)) ?? null,
-    focusScale: entry.focusScale ?? 1,
-    focusOrigin: entry.focusOrigin ?? "center top",
-    focusHeight: entry.focusHeight ?? "42rem"
+    imageUrl: screenshotPathsByEntry.get(entryKey(entry)) ?? null
   }));
 
   return `<!doctype html>
@@ -1643,12 +2113,20 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
     .detail-copy > span, dt { color: var(--red); font-size: .78rem; font-weight: 950; text-transform: uppercase; }
     dl { display: grid; grid-template-columns: minmax(22rem, 2.2fr) minmax(10rem, .8fr); gap: 1.5rem; margin: 0; }
     dd { margin: .35rem 0 0; color: #00254b; font-weight: 600; line-height: 1.4; }
+    .timeline-entry-notes { grid-column: 1 / -1; margin: .25rem 0 0; color: var(--muted); line-height: 1.5; }
     a { color: var(--ink); font-weight: 950; }
-    .screenshot-frame { display: grid; place-items: start center; min-height: var(--focus-height, 42rem); background: #061d33; overflow: hidden; }
-    .screenshot-frame img { display: block; max-width: none; width: 100%; background: #061d33; transform-origin: var(--focus-origin, center top); }
-    .screenshot-frame.focus img { width: calc(100% * var(--focus-scale, 1)); }
-    .screenshot-frame.full { min-height: auto; }
-    .screenshot-frame.full img { width: 100%; }
+    .screenshot-frame { position: relative; display: block; width: 100%; height: clamp(26rem, 64vh, 42rem); border: 0; border-top: 1px solid var(--ink); padding: 0; background: #061d33; overflow: hidden; cursor: zoom-in; text-align: left; }
+    .screenshot-frame img { display: block; width: 100%; height: auto; background: #061d33; }
+    .screenshot-frame::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5rem; pointer-events: none; background: linear-gradient(180deg, transparent, #061d33); opacity: .72; }
+    .screenshot-frame-hint { position: absolute; right: .85rem; bottom: .85rem; z-index: 1; display: inline-flex; align-items: center; gap: .35rem; border: 1px solid var(--ink); padding: .45rem .6rem; background: var(--signal); color: var(--ink); font-size: .85rem; font-weight: 950; }
+    .screenshot-modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: clamp(1rem, 3vw, 2rem); background: #05080dcc; }
+    .screenshot-modal[hidden] { display: none; }
+    .screenshot-modal-panel { width: min(96vw, 110rem); max-height: 92vh; border: 1px solid var(--ink); background: var(--paper); box-shadow: .45rem .45rem 0 var(--red); overflow: hidden; }
+    .screenshot-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; border-bottom: 1px solid var(--ink); background: #fff9ee; }
+    .screenshot-modal-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--navy); }
+    .screenshot-modal-close { border: 1px solid var(--ink); padding: .45rem .7rem; background: var(--navy); color: #f7f0e2; font-weight: 950; }
+    .screenshot-modal-scroll { max-height: calc(92vh - 3.5rem); overflow: auto; background: #061d33; }
+    .screenshot-modal-scroll img { display: block; width: 100%; height: auto; margin: 0 auto; }
     .empty-image { min-height: 30rem; display: grid; place-items: center; color: #f7f0e2; font-weight: 900; }
     @media (max-width: 1100px) { .timeline-layout { grid-template-columns: 1fr; } .timeline-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 760px) { h1 { font-size: clamp(2.4rem, 16vw, 4rem); } .timeline-header-row, .detail-copy, dl { display: block; } .timeline-nav, .timeline-nav.image-only { grid-template-columns: 1fr; } .detail-copy > span { display: block; margin-bottom: 1rem; } }
@@ -1682,15 +2160,16 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
   <script>
     (function () {
       var entries = JSON.parse(document.getElementById("report-data").textContent || "[]");
-      var state = { activeIndex: 0, displayMode: "timeline", imageMode: "focus" };
+      var state = { activeIndex: 0, displayMode: "timeline" };
       var nav = document.querySelector(".timeline-nav");
       var detail = document.querySelector(".timeline-detail");
+      var modal = null;
 
       function summarizeTechStack(techStack) {
         var core = String(techStack || "").split(String.fromCharCode(183))[0].trim();
         var parts = core.split(",").map(function (part) { return part.trim(); }).filter(Boolean);
         var cms = parts.find(function (part) { return /^(WordPress|Squarespace|Wix|Webflow|FrontPage|Classic ASP|Static HTML)/i.test(part); });
-        var theme = parts.find(function (part) { return /^theme:/i.test(part); });
+        var theme = parts.find(function (part) { return /^theme:/i.test(part) || /\btheme$/i.test(part); });
         if (cms && theme) return cms + ", " + theme;
         if (cms) return cms;
         if (parts.length <= 2) return core || "Unknown";
@@ -1716,10 +2195,10 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
           var button = document.createElement("button");
           button.type = "button";
           button.className = index === state.activeIndex ? "active" : "";
-          button.setAttribute("aria-label", entry.date.slice(0, 4) + " " + entry.title + ": " + entry.techStack);
+          button.setAttribute("aria-label", entry.date.slice(0, 4) + " " + entry.techStack);
           button.addEventListener("click", function () {
             state.activeIndex = index;
-            state.imageMode = "focus";
+            closeModal();
             render();
           });
           appendTextElement(button, "span", entry.date.slice(0, 4));
@@ -1749,7 +2228,7 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
         copy.className = "detail-copy";
         var dl = document.createElement("dl");
         var tech = document.createElement("div");
-        appendTextElement(tech, "dt", "Tech stack");
+        appendTextElement(tech, "dt", "Tech stack / title");
         appendTextElement(tech, "dd", entry.techStack || "Needs render review");
         var source = document.createElement("div");
         appendTextElement(source, "dt", "Source");
@@ -1765,23 +2244,80 @@ function buildReportHtml(job, screenshotPathsByEntry = new Map()) {
         dl.appendChild(source);
         copy.appendChild(dl);
         appendTextElement(copy, "span", "Captured on " + entry.date);
+        if (entry.notes) {
+          appendTextElement(copy, "p", entry.notes, "timeline-entry-notes");
+        }
         detail.appendChild(copy);
 
         if (entry.imageUrl) {
-          var frame = document.createElement("div");
-          frame.className = "screenshot-frame " + state.imageMode;
-          frame.style.setProperty("--focus-scale", entry.focusScale || 1);
-          frame.style.setProperty("--focus-origin", entry.focusOrigin || "center top");
-          frame.style.setProperty("--focus-height", entry.focusHeight || "42rem");
+          var frame = document.createElement("button");
+          frame.type = "button";
+          frame.className = "screenshot-frame";
+          frame.setAttribute("aria-label", "View full screenshot for " + entry.date);
           var image = document.createElement("img");
           image.src = entry.imageUrl;
-          image.alt = entry.date + " " + entry.title;
+          image.alt = entry.date + " " + entry.techStack;
+          var hint = document.createElement("span");
+          hint.className = "screenshot-frame-hint";
+          hint.textContent = "View full";
           frame.appendChild(image);
+          frame.appendChild(hint);
+          frame.addEventListener("click", function () {
+            openModal(entry);
+          });
           detail.appendChild(frame);
         } else {
           appendTextElement(detail, "div", "No exported screenshot file was available for this entry.", "empty-image");
         }
       }
+
+      function closeModal() {
+        if (modal) {
+          modal.remove();
+          modal = null;
+          document.body.style.overflow = "";
+        }
+      }
+
+      function openModal(entry) {
+        closeModal();
+        modal = document.createElement("div");
+        modal.className = "screenshot-modal";
+        modal.addEventListener("click", closeModal);
+
+        var panel = document.createElement("div");
+        panel.className = "screenshot-modal-panel";
+        panel.addEventListener("click", function (event) {
+          event.stopPropagation();
+        });
+
+        var header = document.createElement("div");
+        header.className = "screenshot-modal-header";
+        appendTextElement(header, "strong", entry.date + " " + entry.techStack);
+        var close = document.createElement("button");
+        close.type = "button";
+        close.className = "screenshot-modal-close";
+        close.textContent = "Close";
+        close.addEventListener("click", closeModal);
+        header.appendChild(close);
+
+        var scroll = document.createElement("div");
+        scroll.className = "screenshot-modal-scroll";
+        var image = document.createElement("img");
+        image.src = entry.imageUrl;
+        image.alt = entry.date + " " + entry.techStack;
+        scroll.appendChild(image);
+
+        panel.appendChild(header);
+        panel.appendChild(scroll);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+        document.body.style.overflow = "hidden";
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeModal();
+      });
 
       function renderModeButtons() {
         document.querySelectorAll("[data-display-mode]").forEach(function (button) {
@@ -1932,8 +2468,8 @@ async function buildReportExportArchive(job, documentKind) {
 
 function queuePersistJob(job) {
   const snapshot = JSON.stringify(publicJob(job), null, 2);
-  const outputDir = reportOutputDir(job.id);
-  const outputFile = reportJobFile(job.id);
+  const outputDir = reportOutputDir(job);
+  const outputFile = reportJobFile(job);
   const previous = persistQueues.get(job.id) ?? Promise.resolve();
   const next = previous
     .catch(() => undefined)
@@ -2003,6 +2539,10 @@ async function restorePersistedJobs({ prepareResume = true } = {}) {
           const job = JSON.parse(await readFile(path.join(reportsRoot, entry.name, "job.json"), "utf8"));
           if (!job?.id) {
             return;
+          }
+
+          if (!job.storageKey && !job.storageSlug && entry.name !== job.id) {
+            job.storageKey = entry.name;
           }
 
           if (runningJobIds.has(job.id)) {
@@ -2102,7 +2642,16 @@ async function runReportJob(job) {
       message: "Querying Wayback Machine captures for this target."
     });
 
-    const discovery = await discoverCaptures(job.target);
+    let discovery;
+    try {
+      discovery = await discoverCaptures(job.target);
+    } catch (error) {
+      const reusableDiscovery = findReusableDiscoveryForJob(job, reportJobs.values(), error);
+      if (!reusableDiscovery) {
+        throw error;
+      }
+      discovery = reusableDiscovery;
+    }
     if (canceledReportJob(job)) {
       return;
     }
@@ -2110,14 +2659,18 @@ async function runReportJob(job) {
       throw new Error("No captures were found for this report target.");
     }
 
+    const archiveProfile = adaptiveArchiveProfile({ depthMode: job.depthMode, discovery });
+    job.screenshotLimit = archiveProfile.screenshotLimit;
+
     updateJob(job, {
       host: discovery.host,
       discovery,
+      archiveProfile,
       stage: "selecting",
       progress: 60,
       message: discovery.warning
-        ? `Found ${discovery.captureCount} captures across ${discovery.yearSummary.length} years. ${discovery.warning}`
-        : `Found ${discovery.captureCount} captures across ${discovery.yearSummary.length} years.`
+        ? `Found ${discovery.captureCount} captures across ${discovery.yearSummary.length} years. ${archiveProfile.reason} ${discovery.warning}`
+        : `Found ${discovery.captureCount} captures across ${discovery.yearSummary.length} years. ${archiveProfile.reason}`
     });
 
     await delay(250);
@@ -2266,11 +2819,16 @@ app.post("/api/reports", (request, response) => {
       return;
     }
 
-    const requestedScreenshotLimit = normalizeScreenshotLimit(request.body?.screenshotLimit);
+    const requestedDepthMode = normalizeDepthMode(request.body?.depthMode);
+    const requestedScreenshotLimit =
+      request.body?.screenshotLimit == null
+        ? depthScreenshotLimit(requestedDepthMode)
+        : normalizeScreenshotLimit(request.body?.screenshotLimit);
     const notifyEmail = normalizeNotifyEmail(request.body?.notifyEmail);
     const job = createQueuedReportJob({
       host,
       screenshotLimit: requestedScreenshotLimit,
+      depthMode: requestedDepthMode,
       notifyEmail,
       version: nextVersionForDomain(host)
     });
@@ -2307,28 +2865,6 @@ function nextVersionForDomain(domain) {
   return (versions[0].version ?? 1) + 1;
 }
 
-function seedReportJob() {
-  return {
-    id: "krynsky-com-seed",
-    target: "krynsky.com",
-    host: "krynsky.com",
-    version: 0,
-    status: "complete",
-    stage: "complete",
-    progress: 100,
-    message: "Hand-curated seed report",
-    screenshotLimit: 14,
-    createdAt: "1997-01-08T00:00:00.000Z",
-    updatedAt: "2025-01-01T00:00:00.000Z",
-    events: [],
-    discovery: null,
-    report: null,
-    error: null,
-    notifyEmail: null,
-    notificationStatus: "not_requested"
-  };
-}
-
 app.get("/api/reports/:id", async (request, response) => {
   const key = request.params.id;
   const normalizedKey = key === "krynsky-com" ? "krynsky.com" : key;
@@ -2336,16 +2872,8 @@ app.get("/api/reports/:id", async (request, response) => {
   await refreshPersistedJobsForExternalRunner();
   const version = request.query.version ? Number(request.query.version) : undefined;
 
-  if (normalizedKey === "krynsky.com" && version === 0) {
-    response.json(seedReportJob());
-    return;
-  }
   const job = findJobByIdOrDomain(normalizedKey, version);
   if (!job) {
-    if (normalizedKey === "krynsky.com" && version == null) {
-      response.json(seedReportJob());
-      return;
-    }
     response.status(404).json({ error: "Report job not found." });
     return;
   }
@@ -2363,23 +2891,13 @@ app.get("/api/reports/:id/versions", async (request, response) => {
     version: job.version ?? 1,
     id: job.id,
     status: job.status,
+    depthMode: normalizeDepthMode(job.depthMode),
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
+    archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     entryCount: job.report?.curatedEntries?.length ?? 0
   }));
-
-  if (normalizedKey === "krynsky.com") {
-    versionEntries.push({
-      version: 0,
-      id: "krynsky-com-seed",
-      status: "complete",
-      screenshotLimit: 14,
-      createdAt: "1997-01-08T00:00:00.000Z",
-      updatedAt: "2025-01-01T00:00:00.000Z",
-      entryCount: 14
-    });
-  }
 
   if (versionEntries.length === 0) {
     response.status(404).json({ error: "No reports found for this domain." });
@@ -2425,7 +2943,8 @@ app.post("/api/reports/:id/rerun", (request, response) => {
   const newVersion = nextVersionForDomain(latestJob.host);
   const job = createQueuedReportJob({
     host: latestJob.host,
-    screenshotLimit: defaultScreenshotLimit,
+    screenshotLimit: depthScreenshotLimit("adaptive"),
+    depthMode: "adaptive",
     notifyEmail: null,
     version: newVersion,
     message: `Re-run (version ${newVersion}) created from version ${latestJob.version ?? 1}.`
@@ -2442,11 +2961,6 @@ app.delete("/api/reports/:id", async (request, response) => {
 
   const key = request.params.id;
 
-  if (key === "krynsky-com-seed") {
-    response.status(403).json({ error: "Cannot delete the seed report." });
-    return;
-  }
-
   const job = findJobByIdOrDomain(key);
   if (!job) {
     response.status(404).json({ error: "Report job not found." });
@@ -2460,7 +2974,7 @@ app.delete("/api/reports/:id", async (request, response) => {
 
   reportJobs.delete(job.id);
 
-  const outputDir = reportOutputDir(job.id);
+  const outputDir = reportOutputDir(job);
   try {
     await rm(outputDir, { recursive: true, force: true });
   } catch {
@@ -2534,6 +3048,7 @@ app.post("/api/reports/:id/retry", (request, response) => {
   const job = createQueuedReportJob({
     host: sourceJob.host,
     screenshotLimit: normalizeScreenshotLimit(sourceJob.screenshotLimit),
+    depthMode: normalizeDepthMode(sourceJob.depthMode),
     notifyEmail: sourceJob.notifyEmail ?? null,
     version: nextVersionForDomain(sourceJob.host),
     message: `Retry created from ${sourceJob.status} report job ${sourceJob.id}.`
@@ -2624,9 +3139,9 @@ app.patch("/api/reports/:id/entries", (request, response) => {
   const timestamp = String(body.timestamp ?? "");
   const original = String(body.original ?? "");
   const hasIncludedChange = typeof body.included === "boolean";
-  const hasTitleEdit = Object.prototype.hasOwnProperty.call(body, "title");
   const hasNotesEdit = Object.prototype.hasOwnProperty.call(body, "notes");
   const hasTechStackEdit = Object.prototype.hasOwnProperty.call(body, "techStack");
+  const setThumbnail = body.thumbnail === true;
   const included = body.included === true;
   const replaceSelectedYear = body.replaceSelectedYear === true;
   const targetKey = `${timestamp}:${original}`;
@@ -2639,16 +3154,13 @@ app.patch("/api/reports/:id/entries", (request, response) => {
     return;
   }
 
-  if (!hasIncludedChange && !hasTitleEdit && !hasNotesEdit && !hasTechStackEdit) {
+  if (!hasIncludedChange && !hasNotesEdit && !hasTechStackEdit && !setThumbnail) {
     response.status(400).json({ error: "Nothing to update for this report entry." });
     return;
   }
 
-  if (hasTitleEdit) {
-    renderedEntry.title = cleanEditableText(body.title, renderedEntry.title, 140);
-  }
   if (hasNotesEdit) {
-    renderedEntry.notes = cleanEditableText(body.notes, renderedEntry.notes, 500);
+    renderedEntry.notes = cleanOptionalEditableText(body.notes, 500);
   }
   if (hasTechStackEdit) {
     renderedEntry.techStack = cleanEditableText(body.techStack, renderedEntry.techStack, 220);
@@ -2662,11 +3174,9 @@ app.patch("/api/reports/:id/entries", (request, response) => {
         const existingYearEntry = curatedEntries.find((entry) => entry.date.slice(0, 4) === targetYear);
         const replacement = curatedEntryCopy(renderedEntry);
         if (existingYearEntry) {
-          if (!hasTitleEdit) {
-            replacement.title = existingYearEntry.title;
-          }
+          replacement.title = existingYearEntry.title;
           if (!hasNotesEdit) {
-            replacement.notes = existingYearEntry.notes;
+            replacement.notes = visibleEntryNotes(existingYearEntry.notes);
           }
           if (!hasTechStackEdit) {
             replacement.techStack = existingYearEntry.techStack;
@@ -2684,9 +3194,6 @@ app.patch("/api/reports/:id/entries", (request, response) => {
 
   const curatedEntry = curatedEntries.find((entry) => entryKey(entry) === targetKey);
   if (curatedEntry) {
-    if (hasTitleEdit) {
-      curatedEntry.title = renderedEntry.title;
-    }
     if (hasNotesEdit) {
       curatedEntry.notes = renderedEntry.notes;
     }
@@ -2697,8 +3204,14 @@ app.patch("/api/reports/:id/entries", (request, response) => {
 
   job.report.curatedEntries = curatedEntries.sort((a, b) => a.date.localeCompare(b.date));
   job.report.stats.selectedCount = job.report.curatedEntries.length;
+  if (setThumbnail) {
+    job.report.thumbnailEntryKey = targetKey;
+    job.report.thumbnailUrl = null;
+  }
   updateJob(job, {
-    message: hasIncludedChange
+    message: setThumbnail
+      ? `Selected ${renderedEntry.date} as the ${job.host} timeline thumbnail.`
+      : hasIncludedChange
       ? included
         ? replaceSelectedYear
           ? `Selected ${renderedEntry.date} screenshot for the ${renderedEntry.date.slice(0, 4)} timeline record.`

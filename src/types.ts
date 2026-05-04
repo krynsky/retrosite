@@ -25,11 +25,23 @@ export type DiscoveryResult = {
     attempts: number;
     captureCount: number;
     error: string | null;
+    fallback?: boolean;
   }>;
   warning?: string | null;
   captureCount: number;
   yearSummary: YearSummary[];
   candidates: Candidate[];
+};
+
+export type DepthMode = "adaptive" | "quick" | "standard" | "deep";
+
+export type ArchiveProfile = {
+  depthMode: DepthMode;
+  archiveSize: "small" | "medium" | "large" | "huge";
+  captureCount: number;
+  failedQueryCount: number;
+  screenshotLimit: number;
+  reason: string;
 };
 
 export type DraftReportEntry = {
@@ -104,6 +116,8 @@ export type DraftReport = {
   };
   entries: DraftReportEntry[];
   curatedEntries?: DraftReportEntry[];
+  thumbnailEntryKey?: string | null;
+  thumbnailUrl?: string | null;
   generatedReportUrl?: string;
   generatedShareUrl?: string;
 };
@@ -112,7 +126,9 @@ export type ReportVersionSummary = {
   version: number;
   id: string;
   status: string;
+  depthMode?: DepthMode;
   screenshotLimit: number;
+  archiveProfile?: ArchiveProfile | null;
   createdAt: string;
   updatedAt: string;
   entryCount: number;
@@ -128,7 +144,9 @@ export type ReportJob = {
   stage: string;
   progress: number;
   message: string;
+  depthMode: DepthMode;
   screenshotLimit: number;
+  archiveProfile: ArchiveProfile | null;
   createdAt: string;
   updatedAt: string;
   events: Array<{
@@ -157,7 +175,9 @@ export type ReportJobSummary = {
   stage: string;
   progress: number;
   message: string;
+  depthMode: DepthMode;
   screenshotLimit: number;
+  archiveProfile: ArchiveProfile | null;
   createdAt: string;
   updatedAt: string;
   generatedReportUrl: string | null;
