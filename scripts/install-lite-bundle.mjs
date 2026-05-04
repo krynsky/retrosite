@@ -36,19 +36,26 @@ async function downloadFile(url, destination) {
 
 async function extractZip(zipPath, destination) {
   await mkdir(destination, { recursive: true });
-  try {
-    await run("tar", ["-xf", zipPath, "-C", destination]);
-  } catch (error) {
-    if (process.platform !== "win32") {
-      throw error;
+  if (process.platform === "win32") {
+    try {
+      await run("tar", ["-xf", zipPath, "-C", destination]);
+      return;
+    } catch {
+      await run("powershell.exe", [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        `Expand-Archive -LiteralPath '${zipPath.replaceAll("'", "''")}' -DestinationPath '${destination.replaceAll("'", "''")}' -Force`
+      ]);
+      return;
     }
-    await run("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      `Expand-Archive -LiteralPath '${zipPath.replaceAll("'", "''")}' -DestinationPath '${destination.replaceAll("'", "''")}' -Force`
-    ]);
+  }
+
+  try {
+    await run("unzip", ["-q", "-o", zipPath, "-d", destination]);
+  } catch {
+    await run("python3", ["-m", "zipfile", "-e", zipPath, destination]);
   }
 }
 
