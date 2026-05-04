@@ -39,6 +39,85 @@ function extractVersion(url, libName) {
   return match ? match[1].replace(/[._-]min$/, "") : null;
 }
 
+function extractWordPressVersion(metaGenerator) {
+  return metaGenerator?.match(/wordpress\s+([0-9]+(?:\.[0-9]+)*(?:[-.\w]*)?)/i)?.[1] ?? null;
+}
+
+function extractFrontPageLabel(metaGenerator) {
+  const match = metaGenerator?.match(/(?:microsoft\s+)?frontpage\s+([0-9]+(?:\.[0-9]+)*)/i);
+  if (match) {
+    return `Microsoft FrontPage ${match[1]}`;
+  }
+
+  return metaGenerator && /frontpage/i.test(metaGenerator) ? "Microsoft FrontPage" : null;
+}
+
+const THEME_LABELS = new Map([
+  ["astra", "Astra theme"],
+  ["blocksy", "Blocksy theme"],
+  ["cleaker", "Cleaker theme"],
+  ["oceanwp", "OceanWP theme"],
+  ["statement", "Statement theme"],
+  ["twentytwentyfour", "Twenty Twenty-Four theme"]
+]);
+
+const PLUGIN_LABELS = new Map([
+  ["af-extended-live-archive", "af-extended-live-archive plugin"],
+  ["all-in-one-seo-pack", "All in One SEO Pack"],
+  ["astra-addon", "Astra Pro"],
+  ["astra-sites", "Astra Sites"],
+  ["astra-widgets", "Astra Widgets"],
+  ["blocksy-companion", "Blocksy Companion"],
+  ["contact-form-7", "Contact Form 7"],
+  ["digg-digg", "Digg Digg"],
+  ["flickr-gallery", "Flickr Gallery"],
+  ["jetpack", "Jetpack"],
+  ["lastfm-records", "Last.fm Records"],
+  ["lazy-k-gallery", "lazy-k-gallery plugin"],
+  ["lifestream", "lifestream plugin"],
+  ["mailpoet", "MailPoet"],
+  ["myavatars", "MyAvatars"],
+  ["sassy-social-share", "Sassy Social Share"],
+  ["share-this", "ShareThis"],
+  ["site-kit-by-google", "Site Kit by Google"],
+  ["stimuli-lightbox2", "stimuli-lightbox2 plugin"],
+  ["ultimate-addons-for-gutenberg", "Ultimate Addons for Gutenberg/Spectra"],
+  ["utubevideo-gallery", "uTubeVideo Gallery"],
+  ["wp-postrank", "WP-PostRank"]
+]);
+
+function humanizeSlug(slug) {
+  return String(slug)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function readableThemeLabel(slug) {
+  const normalized = String(slug).toLowerCase();
+  if (THEME_LABELS.has(normalized)) {
+    return THEME_LABELS.get(normalized);
+  }
+
+  return `${humanizeSlug(slug)} theme`;
+}
+
+function readablePluginLabel(slug) {
+  const normalized = String(slug).toLowerCase();
+  if (PLUGIN_LABELS.has(normalized)) {
+    return PLUGIN_LABELS.get(normalized);
+  }
+
+  return `${humanizeSlug(slug)} plugin`;
+}
+
+function addUnique(items, label) {
+  if (label && !items.includes(label)) {
+    items.push(label);
+  }
+}
+
 /**
  * Pure function: analyzes an HTML string and returns tech stack detection result.
  *
@@ -46,16 +125,32 @@ function extractVersion(url, libName) {
  * @returns {{ techStack: string, techStackConfidence: "strong" | "weak" | "inferred" }}
  */
 export function detectTechStack(html) {
-  const detections = [];
+  const primaryDetections = [];
+  const supportingDetections = [];
+  const legacyDetections = [];
   let highestTier = "inferred"; // inferred < weak < strong
 
-  function addDetection(label, confidence) {
-    detections.push(label);
+  function setConfidence(confidence) {
     if (confidence === "strong") {
       highestTier = "strong";
     } else if (confidence === "weak" && highestTier !== "strong") {
       highestTier = "weak";
     }
+  }
+
+  function addPrimary(label, confidence) {
+    addUnique(primaryDetections, label);
+    setConfidence(confidence);
+  }
+
+  function addSupporting(label, confidence) {
+    addUnique(supportingDetections, label);
+    setConfidence(confidence);
+  }
+
+  function addLegacy(label) {
+    addUnique(legacyDetections, label);
+    setConfidence("weak");
   }
 
   const metaGenerator = extractMetaGenerator(html);
@@ -77,12 +172,13 @@ export function detectTechStack(html) {
   }
 
   if (isWordPress) {
-    const parts = ["WordPress"];
+    const version = extractWordPressVersion(metaGenerator);
+    const parts = [version ? `WordPress ${version}` : "WordPress"];
 
     // Extract theme name
     const themeMatch = html.match(/\/wp-content\/themes\/([^/"'?#]+)\//i);
     if (themeMatch) {
-      parts.push(`theme: ${themeMatch[1]}`);
+      parts.push(readableThemeLabel(themeMatch[1]));
     }
 
     // Extract plugin names (collect unique)
@@ -93,53 +189,60 @@ export function detectTechStack(html) {
       pluginNames.add(pluginMatch[1]);
     }
     for (const name of pluginNames) {
-      parts.push(`plugin: ${name}`);
+      parts.push(readablePluginLabel(name));
     }
 
-    addDetection(parts.join(", "), "strong");
+    addPrimary(parts.join(", "), "strong");
   }
 
   // --- FrontPage ---
-  if (metaGenerator && /frontpage/i.test(metaGenerator)) {
-    addDetection("FrontPage", "strong");
+  const frontPageLabel = extractFrontPageLabel(metaGenerator);
+  if (frontPageLabel) {
+    addPrimary(frontPageLabel, "strong");
   } else if (/\/_vti_bin\//i.test(html)) {
-    addDetection("FrontPage", "strong");
+    addPrimary("Microsoft FrontPage", "strong");
   }
 
   // --- Squarespace ---
   if (/static\.squarespace\.com/i.test(html)) {
-    addDetection("Squarespace", "strong");
+    addPrimary("Squarespace", "strong");
   }
 
   // --- Wix ---
   if (/static\.wixstatic\.com|wix\.com/i.test(html)) {
-    addDetection("Wix", "strong");
+    addPrimary("Wix", "strong");
   }
 
   // --- Webflow ---
   if (/assets\.website-files\.com|webflow/i.test(html)) {
-    addDetection("Webflow", "strong");
+    addPrimary("Webflow", "strong");
   }
 
   // --- jQuery ---
   const jqueryUrl = urls.find((url) => /jquery/i.test(url) && /\.js/i.test(url));
   if (jqueryUrl) {
     const version = extractVersion(jqueryUrl, "jquery");
-    addDetection(version ? `jQuery ${version}` : "jQuery", "weak");
+    addSupporting(version ? `jQuery ${version}` : "jQuery", "weak");
   }
 
   // --- Bootstrap ---
   const bootstrapUrl = urls.find((url) => /bootstrap/i.test(url) && /\.(css|js)/i.test(url));
   if (bootstrapUrl) {
     const version = extractVersion(bootstrapUrl, "bootstrap");
-    addDetection(version ? `Bootstrap ${version}` : "Bootstrap", "weak");
+    addSupporting(version ? `Bootstrap ${version}` : "Bootstrap", "weak");
   }
 
   // --- Classic ASP ---
   const aspLinks = hrefLinks.filter((href) => /\.asp(\?|#|$)/i.test(href) || href.endsWith(".asp"));
   if (aspLinks.length >= 2) {
-    addDetection("Classic ASP", "strong");
+    if (primaryDetections.length > 0) {
+      addLegacy("legacy ASP links");
+    } else {
+      addPrimary("Classic ASP", "strong");
+    }
   }
+
+  const detections = [...primaryDetections, ...supportingDetections, ...legacyDetections];
 
   // --- Static HTML fallback ---
   if (detections.length === 0) {

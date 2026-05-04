@@ -7,6 +7,7 @@ describe("detectTechStack", () => {
     const html = `<html><head><meta name="generator" content="WordPress 6.4.2"></head><body></body></html>`;
     const result = detectTechStack(html);
     assert.ok(result.techStack.includes("WordPress"), `Expected WordPress in techStack, got: ${result.techStack}`);
+    assert.ok(result.techStack.includes("WordPress 6.4.2"), `Expected WordPress version in techStack, got: ${result.techStack}`);
     assert.equal(result.techStackConfidence, "strong");
   });
 
@@ -39,8 +40,32 @@ describe("detectTechStack", () => {
   it("detects FrontPage from meta generator tag with strong confidence", () => {
     const html = `<html><head><meta name="generator" content="Microsoft FrontPage 5.0"></head><body></body></html>`;
     const result = detectTechStack(html);
-    assert.ok(result.techStack.includes("FrontPage"), `Expected FrontPage in techStack, got: ${result.techStack}`);
+    assert.ok(result.techStack.includes("Microsoft FrontPage 5.0"), `Expected FrontPage version in techStack, got: ${result.techStack}`);
     assert.equal(result.techStackConfidence, "strong");
+  });
+
+  it("formats WordPress themes and plugins as readable labels", () => {
+    const html = `<html><head>
+      <meta name="generator" content="WordPress 5.0.3">
+      <link rel="stylesheet" href="/wp-content/themes/oceanwp/style.css">
+      <script src="/wp-content/plugins/all-in-one-seo-pack/app.js"></script>
+      <script src="/wp-content/plugins/ultimate-addons-for-gutenberg/blocks.js"></script>
+    </head><body></body></html>`;
+    const result = detectTechStack(html);
+    assert.equal(
+      result.techStack,
+      "WordPress 5.0.3, OceanWP theme, All in One SEO Pack, Ultimate Addons for Gutenberg/Spectra"
+    );
+    assert.equal(result.techStackConfidence, "strong");
+  });
+
+  it("marks asp links as legacy when a stronger platform is present", () => {
+    const html = `<html><head>
+      <meta name="generator" content="WordPress 2.6.2">
+      <link rel="stylesheet" href="/wp-content/themes/Cleaker/style.css">
+    </head><body><a href="/archive.asp">Archive</a><a href="/about.asp">About</a></body></html>`;
+    const result = detectTechStack(html);
+    assert.equal(result.techStack, "WordPress 2.6.2, Cleaker theme · legacy ASP links");
   });
 
   it("detects Classic ASP from multiple .asp links", () => {
