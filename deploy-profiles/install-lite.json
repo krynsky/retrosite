@@ -1,0 +1,20 @@
+{
+  "name": "install-lite",
+  "description": "Curated demo timeline payload for local and Pinokio installs.",
+  "outputName": "retrosite-install-lite",
+  "releaseAssetName": "retrosite-install-lite.zip",
+  "selectedTimelineKeys": [
+    "krynsky.com",
+    "apple.com",
+    "friendfeed.com/krynsky"
+  ],
+  "demositeStaticFiles": [
+    "favicon-16.png",
+    "favicon-32.png",
+    "favicon-64.png",
+    "favicon.ico",
+    "og-image.png",
+    "twitter.png"
+  ],
+  "excludeTimelineExportZips": true
+}

@@ -10,7 +10,8 @@
     "start": "node server/index.mjs",
     "worker": "node server/worker.mjs",
     "publish:timeline": "node scripts/publish-timeline.mjs",
-    "test": "node --test server/*.test.mjs",
+    "package:install-lite": "node scripts/build-install-payload.mjs --zip",
+    "test": "node --test server/*.test.mjs scripts/*.test.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc --noEmit"

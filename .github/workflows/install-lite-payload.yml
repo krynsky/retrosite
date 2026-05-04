@@ -1,0 +1,49 @@
+name: Build install-lite payload
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish the install-lite ZIP under"
+        required: true
+        default: "install-lite-latest"
+
+permissions:
+  contents: write
+
+jobs:
+  build-install-lite:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run payload tests
+        run: node --test scripts/build-install-payload.test.mjs
+
+      - name: Build install-lite ZIP
+        run: npm run package:install-lite
+
+      - name: Publish install-lite release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          ASSET="dist/install/retrosite-install-lite.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --title "Retrosite install-lite payload" \
+              --notes "Curated Retrosite install payload for local and Pinokio installs."
+          fi

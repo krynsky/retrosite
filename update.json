@@ -3,8 +3,7 @@
     {
       "method": "shell.run",
       "params": {
-        "path": "app",
-        "message": "git pull"
+        "message": "node scripts/install-lite-bundle.mjs app"
       }
     },
     {

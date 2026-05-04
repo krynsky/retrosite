@@ -13,9 +13,9 @@ Generated reports and screenshots stay local inside `app/server/generated/`.
 
 ## Launcher Scripts
 
-- `install.json` clones `https://github.com/krynsky/retrosite`, installs npm dependencies, and installs Playwright Chromium.
+- `install.json` downloads the curated lite install bundle, installs npm dependencies, and installs Playwright Chromium.
 - `start.json` runs `npm run dev` with local report generation enabled.
-- `update.json` pulls the latest Retrosite code and refreshes dependencies.
+- `update.json` refreshes the lite install bundle and dependencies.
 - `reset.json` removes dependencies and build caches without deleting generated reports.
 
 ## API
