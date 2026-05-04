@@ -11,7 +11,7 @@ import { StampButton } from "./primitives/StampButton";
 import { PixelIcon } from "./primitives/PixelIcon";
 
 const HOME_CARD_LIMIT = 6;
-const twitterScreenshot = "/og-image.png";
+const twitterScreenshot = "/twitter.png";
 const LocalTimelineForm = lazy(() => import("./LocalTimelineForm"));
 
 function PixelArrow() {
