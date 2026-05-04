@@ -20,12 +20,12 @@ Generated reports and screenshots stay local inside `app/server/generated/`.
 
 ## API
 
-The local API runs on `http://127.0.0.1:4317/` while the launcher is running.
+The Pinokio local API runs on `http://127.0.0.1:4327/` while the launcher is running.
 
 Create a report with curl:
 
 ```bash
-curl -X POST http://127.0.0.1:4317/api/reports \
+curl -X POST http://127.0.0.1:4327/api/reports \
   -H "Content-Type: application/json" \
   -d "{\"url\":\"example.com\"}"
 ```
@@ -33,7 +33,7 @@ curl -X POST http://127.0.0.1:4317/api/reports \
 Create a report with JavaScript:
 
 ```javascript
-await fetch("http://127.0.0.1:4317/api/reports", {
+await fetch("http://127.0.0.1:4327/api/reports", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ url: "example.com" })
@@ -46,7 +46,7 @@ Create a report with Python:
 import requests
 
 requests.post(
-    "http://127.0.0.1:4317/api/reports",
+    "http://127.0.0.1:4327/api/reports",
     json={"url": "example.com"},
     timeout=30,
 )

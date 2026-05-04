@@ -6,6 +6,7 @@
     "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
     "dev:web": "vite --host 127.0.0.1",
     "dev:api": "node server/index.mjs",
+    "dev:pinokio": "concurrently \"npm:dev:api\" \"npm run dev:web -- --port 5273 --strictPort\"",
     "start": "node server/index.mjs",
     "worker": "node server/worker.mjs",
     "publish:timeline": "node scripts/publish-timeline.mjs",
