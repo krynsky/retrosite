@@ -103,7 +103,7 @@ server/generated/
 Do commit intentional static assets:
 
 ```text
-design_handoff/twitter.png
+krynsky-wayback/og-image.png
 krynsky-wayback/screenshots/
 krynsky-wayback/timelines/
 ```

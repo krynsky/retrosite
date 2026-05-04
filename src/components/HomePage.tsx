@@ -7,13 +7,13 @@ import { seedReportCard } from "../reportCards";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 import { Polaroid } from "./primitives/Polaroid";
-import twitterScreenshot from "../../design_handoff/twitter.png";
 import { MarkerText } from "./primitives/MarkerText";
 import { DomainField } from "./primitives/DomainField";
 import { StampButton } from "./primitives/StampButton";
 import { PixelIcon } from "./primitives/PixelIcon";
 
 const HOME_CARD_LIMIT = 6;
+const twitterScreenshot = "/og-image.png";
 
 function PixelArrow() {
   return (
