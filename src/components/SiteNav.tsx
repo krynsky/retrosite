@@ -20,7 +20,14 @@ export function SiteNav() {
         <StampButton as="a" href={isDemoSite ? "/about" : "/how-to-use"} tone="paper" size="md">
           {isDemoSite ? "About" : "How to use"}
         </StampButton>
-        <StampButton as="a" href="https://github.com" tone="paper" size="md" target="_blank" rel="noopener noreferrer">
+        <StampButton
+          as="a"
+          href="https://github.com/krynsky/retrosite"
+          tone="paper"
+          size="md"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <Github size={16} strokeWidth={2.2} aria-hidden="true" />
           GitHub
         </StampButton>

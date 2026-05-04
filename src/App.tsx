@@ -81,8 +81,13 @@ function AboutPage() {
         </span>
         <h1>About the Retrosite demo</h1>
         <p>
-          The hosted Retrosite demo is a showcase of website timelines published by the app author. You can browse
-          finished timelines and suggest future ones, while report generation and editing stay in the local app.
+          Retrosite demo site is a showcase of website timelines published by{" "}
+          <a href="https://krynsky.com">Mark Krynsky</a>. The timelines leverage the{" "}
+          <a href="https://web.archive.org/">Wayback Machine</a> to identify and create screenshots for each year
+          represented in the lifespan of a website. You can browse finished timelines and suggest future ones, while
+          report generation and editing stay in the local app. You can{" "}
+          <a href="https://github.com/krynsky/retrosite">install and run</a> Retrosite on your own machine to generate
+          reports.
         </p>
       </section>
 
