@@ -4,6 +4,8 @@ dist/
 .codex-logs/
 .claude/settings.local.json
 server/generated/
+pinokio/app/
+pinokio/env/
 npm-debug.log*
 *.log
 docs/screenshots/

@@ -26,15 +26,16 @@ The local app can create reports, render screenshots, edit timelines, export Mar
 
 ## Pinokio App
 
-Pinokio should be a thin wrapper around the normal local app. It should:
+The Pinokio launcher lives in `pinokio/` and is a thin wrapper around the normal local app. It:
 
-- Clone the GitHub repo.
-- Run `npm install`.
-- Start `npm run dev` or `npm run start` after a build.
-- Open `http://127.0.0.1:5173/` for dev mode or `http://127.0.0.1:4317/` for production-style mode.
-- Keep `server/generated/` local and persistent.
+- Clones the GitHub repo into `pinokio/app/`.
+- Runs `npm install`.
+- Installs Playwright Chromium for screenshot rendering.
+- Starts `npm run dev`.
+- Opens `http://127.0.0.1:5173/`.
+- Keeps `pinokio/app/server/generated/` local and persistent.
 
-The main repo should remain runnable without Pinokio-specific assumptions. A Pinokio launcher can live in this repo under `pinokio/` or in a separate launcher repo if marketplace publishing requires it.
+The main repo remains runnable without Pinokio-specific assumptions. Pinokio start sets `RETROSITE_USE_BUNDLED_CHROMIUM=1` so the screenshot renderer uses the browser installed by the launcher.
 
 ## Vercel Demo
 
@@ -114,4 +115,4 @@ krynsky-wayback/timelines/
 3. Create GitHub repo.
 4. Configure Vercel with request-only env vars.
 5. Publish selected timelines locally and commit the static `krynsky-wayback/timelines/` output.
-6. Add a Pinokio launcher once the GitHub repo URL is final.
+6. Keep the Pinokio launcher verified after changes to install or start commands.

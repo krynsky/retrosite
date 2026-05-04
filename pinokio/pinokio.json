@@ -1,0 +1,12 @@
+{
+  "links": [{
+    "title": "Retrosite",
+    "links": [{
+      "title": "GitHub",
+      "value": "https://github.com/krynsky/retrosite"
+    }, {
+      "title": "Demo site",
+      "value": "https://retrosite.krynsky.com/"
+    }]
+  }]
+}

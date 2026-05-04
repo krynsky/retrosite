@@ -108,6 +108,10 @@ npm run build
 npm run start
 ```
 
+## Pinokio
+
+Retrosite includes a Pinokio launcher in `pinokio/`. Open that folder in Pinokio, then run `Install` and `Start`. The launcher clones the app, installs dependencies, installs Playwright Chromium, starts the local dev stack, and keeps generated reports under `pinokio/app/server/generated/`.
+
 ## Routes
 
 - `/` - local report creation form.

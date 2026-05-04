@@ -377,6 +377,10 @@ function chromeExecutablePath() {
     return process.env.CHROME_PATH;
   }
 
+  if (process.env.RETROSITE_USE_BUNDLED_CHROMIUM === "1") {
+    return chromium.executablePath();
+  }
+
   if (process.platform === "win32") {
     return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
   }
