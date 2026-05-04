@@ -37,7 +37,7 @@ Generated reports are filesystem-backed local drafts. They can be edited, publis
 - Cancel queued/running jobs and retry failed/canceled jobs.
 - Run API and worker separately for hosted deployments.
 - Submit timeline requests in request-only mode.
-- Publish a local generated timeline into static public assets under `krynsky-wayback/timelines/`.
+- Publish a local generated timeline into static public assets under `demosite/timelines/`.
 
 ## What Is Intentionally Not Connected Yet
 
@@ -198,8 +198,8 @@ npm run publish:timeline -- <job-id-or-target>
 Output:
 
 ```text
-krynsky-wayback/timelines/<encoded-target>/timeline.json
-krynsky-wayback/timelines/<encoded-target>/screenshots/
+demosite/timelines/<encoded-target>/timeline.json
+demosite/timelines/<encoded-target>/screenshots/
 ```
 
 ## GitHub Notes
@@ -216,7 +216,7 @@ Already ignored:
 - `retrosite-*.png`
 - `*.local`
 
-Commit source, docs, package files, static data, and the original `krynsky-wayback/` report assets.
+Commit source, docs, package files, static data, and the original `demosite/` report assets.
 
 Do not commit local generated jobs unless a specific generated fixture is intentionally promoted into test data.
 

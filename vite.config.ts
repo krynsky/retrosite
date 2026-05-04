@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  publicDir: "krynsky-wayback",
+  publicDir: "demosite",
   server: {
     proxy: {
       "/api": "http://127.0.0.1:4317",

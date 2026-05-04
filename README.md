@@ -4,7 +4,7 @@ Retrosite turns public Wayback Machine captures into visual website timeline rep
 
 [View the demo site](https://retrosite.krynsky.com/)
 
-[![Retrosite demo site screenshot](krynsky-wayback/og-image.png)](https://retrosite.krynsky.com/)
+[![Retrosite demo site screenshot](demosite/og-image.png)](https://retrosite.krynsky.com/)
 
 ## What Retrosite Does
 
@@ -139,7 +139,7 @@ docs/
   MVP_RUNBOOK.md           Operations and hosting notes
   BACKLOG.md               Remaining work
   PACKAGING.md             Local, Pinokio, and Vercel packaging notes
-krynsky-wayback/
+demosite/
   og-image.png             Demo-site screenshot used by link previews
   screenshots/             Original hand-curated report assets
 ```

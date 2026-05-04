@@ -9,8 +9,8 @@ const generatedRoot = process.env.RETROSITE_GENERATED_ROOT
   ? path.resolve(process.env.RETROSITE_GENERATED_ROOT)
   : path.join(repoRoot, "server", "generated");
 const reportsRoot = path.join(generatedRoot, "reports");
-const publicTimelinesRoot = path.join(repoRoot, "krynsky-wayback", "timelines");
-const vitePublicRoot = path.join(repoRoot, "krynsky-wayback");
+const publicTimelinesRoot = path.join(repoRoot, "demosite", "timelines");
+const vitePublicRoot = path.join(repoRoot, "demosite");
 
 function usage() {
   console.error("Usage: npm run publish:timeline -- <job-id-or-target|krynsky-com-seed> [public-slug]");

@@ -67,7 +67,7 @@ const localUseSteps = [
     number: "06",
     title: "Publish static timelines",
     summary: "Promote a local timeline into public static assets.",
-    detail: "Run `npm run publish:timeline -- <job-id-or-target>` to write `krynsky-wayback/timelines/<target>/timeline.json` and screenshot files for a hosted read-only site."
+    detail: "Run `npm run publish:timeline -- <job-id-or-target>` to write `demosite/timelines/<target>/timeline.json` and screenshot files for a hosted read-only site."
   }
 ];
 

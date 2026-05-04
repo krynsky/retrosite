@@ -56,7 +56,7 @@ In this mode:
 - `/api/requests` creates a GitHub issue for review.
 - `/api/reports` generation is disabled in the Express server.
 - Report edit/admin controls are hidden, and mutation endpoints are disabled.
-- Published timelines are static files under `krynsky-wayback/timelines/`.
+- Published timelines are static files under `demosite/timelines/`.
 
 ## Publishing A Locally Generated Timeline
 
@@ -76,11 +76,11 @@ npm run publish:timeline -- friendfeed.com/krynsky
 The script writes:
 
 ```text
-krynsky-wayback/timelines/<encoded-target>/timeline.json
-krynsky-wayback/timelines/<encoded-target>/screenshots/
+demosite/timelines/<encoded-target>/timeline.json
+demosite/timelines/<encoded-target>/screenshots/
 ```
 
-Because Vite serves `krynsky-wayback/` as the public directory, the published timeline is available at:
+Because Vite serves `demosite/` as the public directory, the published timeline is available at:
 
 ```text
 /timeline/<encoded-target>
@@ -103,9 +103,9 @@ server/generated/
 Do commit intentional static assets:
 
 ```text
-krynsky-wayback/og-image.png
-krynsky-wayback/screenshots/
-krynsky-wayback/timelines/
+demosite/og-image.png
+demosite/screenshots/
+demosite/timelines/
 ```
 
 ## Recommended Release Order
@@ -114,5 +114,5 @@ krynsky-wayback/timelines/
 2. Verify `npm test`, `npm run check`, and `npm run build`.
 3. Create GitHub repo.
 4. Configure Vercel with request-only env vars.
-5. Publish selected timelines locally and commit the static `krynsky-wayback/timelines/` output.
+5. Publish selected timelines locally and commit the static `demosite/timelines/` output.
 6. Keep the Pinokio launcher verified after changes to install or start commands.
