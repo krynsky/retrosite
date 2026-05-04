@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-04T03:14:10.483Z",
+  "updatedAt": "2026-05-04T03:15:13.033Z",
   "timelines": [
     {
       "id": "940b4c92-a630-4953-ae76-195cdd368bb3",
@@ -159,6 +159,38 @@
       },
       "error": null,
       "thumbnailUrl": "/timelines/krynsky.com/screenshots/01-1997-04-15-1997-candidate-homepage.png",
+      "notifyEmail": null,
+      "notificationStatus": "not_requested",
+      "activeJobCount": 0,
+      "maxActiveJobs": 3,
+      "queuePosition": null,
+      "isActiveJob": false
+    },
+    {
+      "id": "3348cde6-6e61-42a6-a089-2fb0a34134d9",
+      "storageKey": "lifestreamblog.com",
+      "target": "lifestreamblog.com",
+      "host": "lifestreamblog.com",
+      "version": 2,
+      "status": "complete",
+      "stage": "complete",
+      "progress": 100,
+      "message": "Draft report is ready for curation.",
+      "screenshotLimit": 24,
+      "createdAt": "2026-04-29T04:58:54.859Z",
+      "updatedAt": "2026-04-29T05:04:25.686Z",
+      "generatedReportUrl": "/timeline/lifestreamblog.com",
+      "generatedShareUrl": "/timeline/lifestreamblog.com/share",
+      "stats": {
+        "captureCount": 498,
+        "candidateCount": 20,
+        "yearCount": 20,
+        "range": "2007-2026",
+        "renderedCount": 20,
+        "selectedCount": 7
+      },
+      "error": null,
+      "thumbnailUrl": "/timelines/lifestreamblog.com/screenshots/01-2007-03-28-2007-candidate-homepage.png",
       "notifyEmail": null,
       "notificationStatus": "not_requested",
       "activeJobCount": 0,
