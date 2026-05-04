@@ -21,6 +21,7 @@ const __dirname = path.dirname(currentFile);
 const generatedRoot = process.env.RETROSITE_GENERATED_ROOT ?? path.join(__dirname, "generated");
 const requestQueueRoot = process.env.RETROSITE_REQUEST_QUEUE_ROOT ?? path.join(generatedRoot, "requests");
 const notificationOutboxRoot = process.env.RETROSITE_NOTIFICATION_OUTBOX ?? path.join(generatedRoot, "notifications");
+const staticTimelinesRoot = process.env.RETROSITE_STATIC_TIMELINES_ROOT ?? path.join(__dirname, "..", "demosite", "timelines");
 const clientDistRoot = path.join(__dirname, "..", "dist");
 const clientIndexFile = path.join(clientDistRoot, "index.html");
 const defaultScreenshotLimit = Number(process.env.RETROSITE_SCREENSHOT_LIMIT ?? 35);
@@ -248,6 +249,10 @@ export function inlineRunnerEnabled() {
 function retrositeMode() {
   const mode = String(process.env.RETROSITE_MODE ?? "local").trim().toLowerCase();
   return mode === "request-only" ? "request-only" : "local";
+}
+
+function includeStaticTimelineSummaries() {
+  return process.env.RETROSITE_INCLUDE_STATIC_TIMELINES === "1";
 }
 
 function githubTimelineRequestSearchUrl(repo) {
@@ -1844,6 +1849,55 @@ function publicJobSummary(job) {
   };
 }
 
+function normalizeStaticTimelineSummary(timeline) {
+  if (!timeline?.host) {
+    return null;
+  }
+
+  const host = String(timeline.host);
+  return {
+    id: String(timeline.id ?? timeline.storageKey ?? host),
+    storageKey: timeline.storageKey ?? host,
+    target: timeline.target ?? host,
+    host,
+    version: Number(timeline.version ?? 1),
+    status: timeline.status === "incomplete" ? "incomplete" : "complete",
+    stage: timeline.stage ?? "complete",
+    progress: Number(timeline.progress ?? 100),
+    message: timeline.message ?? "Bundled starter timeline.",
+    depthMode: normalizeDepthMode(timeline.depthMode),
+    screenshotLimit: normalizeScreenshotLimit(timeline.screenshotLimit),
+    archiveProfile: timeline.archiveProfile ?? null,
+    createdAt: timeline.createdAt ?? timeline.updatedAt ?? new Date(0).toISOString(),
+    updatedAt: timeline.updatedAt ?? timeline.createdAt ?? new Date(0).toISOString(),
+    generatedReportUrl: timelineRoutePath(host),
+    generatedShareUrl: `${timelineRoutePath(host)}/share`,
+    stats: timeline.stats ?? null,
+    error: timeline.error ?? null,
+    thumbnailUrl: timeline.thumbnailUrl ?? null,
+    notifyEmail: null,
+    notificationStatus: "not_requested",
+    ...queueSummary(),
+    queuePosition: null,
+    isActiveJob: false
+  };
+}
+
+async function loadStaticTimelineSummaries() {
+  if (!includeStaticTimelineSummaries()) {
+    return [];
+  }
+
+  try {
+    const index = JSON.parse(await readFile(path.join(staticTimelinesRoot, "index.json"), "utf8"));
+    return (Array.isArray(index.timelines) ? index.timelines : [])
+      .map(normalizeStaticTimelineSummary)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function markdownEscape(value) {
   return String(value ?? "").replace(/\|/g, "\\|");
 }
@@ -2780,7 +2834,12 @@ app.get("/api/reports", async (request, response) => {
     }
   }
 
-  let jobs = [...latestByDomain.values()]
+  const generatedSummaries = [...latestByDomain.values()].map(publicJobSummary);
+  const generatedHosts = new Set(generatedSummaries.map((job) => job.host));
+  const staticSummaries = (await loadStaticTimelineSummaries())
+    .filter((job) => !generatedHosts.has(job.host));
+
+  let jobs = [...generatedSummaries, ...staticSummaries]
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
 
   if (search) {
@@ -2788,7 +2847,7 @@ app.get("/api/reports", async (request, response) => {
   }
 
   const total = jobs.length;
-  const paged = jobs.slice(offset, offset + limit).map(publicJobSummary);
+  const paged = jobs.slice(offset, offset + limit);
 
   response.json({ jobs: paged, total, queue: queueSummary() });
 });

@@ -112,6 +112,54 @@ test("report list exposes queue capacity metadata", async (t) => {
   assert.ok(Array.isArray(payload.jobs));
 });
 
+test("report list can include bundled static timelines when enabled", async (t) => {
+  const staticRoot = await mkdtemp(path.join(tmpdir(), "retrosite-test-static-timelines-"));
+  t.after(async () => {
+    await rm(staticRoot, { recursive: true, force: true });
+  });
+  await mkdir(staticRoot, { recursive: true });
+  await writeFile(
+    path.join(staticRoot, "index.json"),
+    JSON.stringify({
+      timelines: [
+        {
+          id: "starter-example",
+          storageKey: "example.com",
+          target: "example.com",
+          host: "example.com",
+          status: "complete",
+          stage: "complete",
+          progress: 100,
+          message: "Bundled starter timeline.",
+          screenshotLimit: 35,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T00:00:00.000Z",
+          stats: {
+            captureCount: 10,
+            candidateCount: 5,
+            yearCount: 2,
+            range: "2001-2002"
+          },
+          thumbnailUrl: "/timelines/example.com/screenshots/thumb.png"
+        }
+      ]
+    }),
+    "utf8"
+  );
+
+  const baseUrl = await startTestServer(t, testPort + 38, {
+    RETROSITE_INCLUDE_STATIC_TIMELINES: "1",
+    RETROSITE_STATIC_TIMELINES_ROOT: staticRoot
+  });
+
+  const response = await fetch(`${baseUrl}/api/reports?limit=10`);
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.total, 1);
+  assert.equal(payload.jobs[0].host, "example.com");
+  assert.equal(payload.jobs[0].thumbnailUrl, "/timelines/example.com/screenshots/thumb.png");
+});
+
 test("report creation rejects invalid notification email", async (t) => {
   const baseUrl = await startTestServer(t, testPort + 1);
 

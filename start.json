@@ -10,6 +10,7 @@
           "RETROSITE_MODE": "local",
           "RETROSITE_RUNNER_MODE": "inline",
           "RETROSITE_GENERATED_ROOT": "server/generated",
+          "RETROSITE_INCLUDE_STATIC_TIMELINES": "1",
           "RETROSITE_APP_ORIGIN": "http://127.0.0.1:4327",
           "RETROSITE_WEB_URL": "http://127.0.0.1:5273/",
           "RETROSITE_USE_BUNDLED_CHROMIUM": "1"
