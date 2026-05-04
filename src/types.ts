@@ -204,6 +204,7 @@ export type AppConfig = {
   canEditReports: boolean;
   canSubmitRequests: boolean;
   requestSink: string;
+  requestStatusUrl: string | null;
 };
 
 export type TimelineRequest = {
@@ -214,4 +215,5 @@ export type TimelineRequest = {
   path: string;
   status: "new" | string;
   createdAt: string;
+  issueUrl?: string | null;
 };

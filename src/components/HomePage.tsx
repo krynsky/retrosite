@@ -1,8 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import type { DepthMode, ReportJobSummary, TimelineRequest } from "../types";
+import type { ReportJobSummary, TimelineRequest } from "../types";
 import { useAppConfig } from "../useAppConfig";
-import { timelinePath } from "../helpers";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 import { Polaroid } from "./primitives/Polaroid";
@@ -13,6 +12,7 @@ import { PixelIcon } from "./primitives/PixelIcon";
 
 const HOME_CARD_LIMIT = 6;
 const twitterScreenshot = "/og-image.png";
+const LocalTimelineForm = lazy(() => import("./LocalTimelineForm"));
 
 function PixelArrow() {
   return (
@@ -29,8 +29,10 @@ export function HomePage() {
   const [domain, setDomain] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [requestSuccess, setRequestSuccess] = useState("");
-  const [depthMode, setDepthMode] = useState<DepthMode>("adaptive");
+  const [requestSuccess, setRequestSuccess] = useState<{
+    target: string;
+    issueUrl: string | null;
+  } | null>(null);
   const { config, loaded: configLoaded } = useAppConfig();
   const [recentJobs, setRecentJobs] = useState<ReportJobSummary[]>([]);
   const [recentError, setRecentError] = useState("");
@@ -105,40 +107,27 @@ export function HomePage() {
 
     setSubmitLoading(true);
     setSubmitError("");
-    setRequestSuccess("");
+    setRequestSuccess(null);
 
     try {
-      if (requestOnlyMode) {
-        const response = await fetch("/api/requests", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url: domain.trim() })
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to submit timeline request.");
-        }
-
-        const requestRecord = payload.request as TimelineRequest;
-        setRequestSuccess(`Request saved for ${requestRecord.target}.`);
-        setDomain("");
-        return;
-      }
-
-      const response = await fetch("/api/reports", {
+      const response = await fetch("/api/requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: domain.trim(), depthMode })
+        body: JSON.stringify({ url: domain.trim() })
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to create timeline job.");
+        throw new Error(payload.error ?? "Unable to submit timeline request.");
       }
 
-      const host = payload.host ?? domain.trim().replace(/^https?:\/\//, "");
-      window.location.assign(timelinePath(host));
+      const requestRecord = payload.request as TimelineRequest;
+      setRequestSuccess({
+        target: requestRecord.target,
+        issueUrl: requestRecord.issueUrl ?? null
+      });
+      setDomain("");
     } catch (caught) {
-      setSubmitError(caught instanceof Error ? caught.message : "Unable to create timeline job.");
+      setSubmitError(caught instanceof Error ? caught.message : "Unable to submit timeline request.");
     } finally {
       setSubmitLoading(false);
     }
@@ -173,41 +162,64 @@ export function HomePage() {
             <MarkerText tone="double">the Wayback Machine</MarkerText>
           </h1>
 
-          <form className="domain-block" onSubmit={handleSubmit}>
-            <DomainField
-              value={domain}
-              onChange={(event) => setDomain(event.target.value)}
-              placeholder="example.com/path"
-              required
-              aria-label="Domain or path"
-            />
-            {!requestOnlyMode && (
-              <label className="depth-field">
-                <span className="depth-field-label">DEPTH</span>
-                <select
-                  value={depthMode}
-                  onChange={(event) => setDepthMode(event.target.value as DepthMode)}
-                  aria-label="Timeline depth"
+          {!configLoaded && (
+            <form className="domain-block" aria-label="Timeline form loading">
+              <DomainField placeholder="example.com/path" disabled aria-label="Domain or path" />
+              <StampButton type="button" tone="primary" size="lg" disabled icon={<PixelArrow />}>
+                Loading
+              </StampButton>
+            </form>
+          )}
+          {configLoaded && requestOnlyMode && (
+            <>
+              <form className="domain-block" onSubmit={handleSubmit}>
+                <DomainField
+                  value={domain}
+                  onChange={(event) => setDomain(event.target.value)}
+                  placeholder="example.com/path"
+                  required
+                  aria-label="Domain or path"
+                />
+                <StampButton
+                  type="submit"
+                  tone="primary"
+                  size="lg"
+                  disabled={submitLoading}
+                  icon={submitLoading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <PixelArrow />}
                 >
-                  <option value="adaptive">Adaptive</option>
-                  <option value="quick">Quick</option>
-                  <option value="standard">Standard</option>
-                  <option value="deep">Deep</option>
-                </select>
-              </label>
-            )}
-            <StampButton
-              type="submit"
-              tone="primary"
-              size="lg"
-              disabled={submitLoading}
-              icon={submitLoading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <PixelArrow />}
-            >
-              {requestOnlyMode ? "Request Timeline" : "Create Timeline"}
-            </StampButton>
-          </form>
-          {submitError && <p className="error-note">{submitError}</p>}
-          {requestSuccess && <p className="success-note">{requestSuccess}</p>}
+                  Request Timeline
+                </StampButton>
+                {config.requestStatusUrl && (
+                  <p className="request-status-link">
+                    You can view the status of previous submissions{" "}
+                    <a href={config.requestStatusUrl} target="_blank" rel="noreferrer">
+                      here
+                    </a>.
+                  </p>
+                )}
+              </form>
+              {submitError && <p className="error-note">{submitError}</p>}
+              {requestSuccess && (
+                <p className="success-note">
+                  Request saved for {requestSuccess.target}.
+                  {requestSuccess.issueUrl && (
+                    <>
+                      {" "}
+                      You can monitor the status of your submission{" "}
+                      <a href={requestSuccess.issueUrl} target="_blank" rel="noreferrer">
+                        here
+                      </a>.
+                    </>
+                  )}
+                </p>
+              )}
+            </>
+          )}
+          {configLoaded && !requestOnlyMode && (
+            <Suspense fallback={null}>
+              <LocalTimelineForm idleIcon={<PixelArrow />} />
+            </Suspense>
+          )}
         </div>
 
         <div className="hero-right">

@@ -144,7 +144,8 @@ test("request-only mode exposes public config and accepts timeline requests", as
     canGenerateReports: false,
     canEditReports: false,
     canSubmitRequests: true,
-    requestSink: "local"
+    requestSink: "local",
+    requestStatusUrl: null
   });
 
   const requestResponse = await fetch(`${baseUrl}/api/requests`, {
@@ -191,6 +192,21 @@ test("request-only mode exposes public config and accepts timeline requests", as
     })
   });
   assert.equal(editResponse.status, 403);
+});
+
+test("request-only config exposes timeline request issue search when configured", async (t) => {
+  const { baseUrl } = await startTestServerContext(t, testPort + 11, {
+    RETROSITE_MODE: "request-only",
+    RETROSITE_REQUEST_REPO: "https://github.com/krynsky/retrosite.git"
+  });
+
+  const configResponse = await fetch(`${baseUrl}/api/config`);
+  assert.equal(configResponse.status, 200);
+  const config = await configResponse.json();
+  assert.equal(
+    config.requestStatusUrl,
+    "https://github.com/search?q=repo%3Akrynsky%2Fretrosite%20is%3Aissue%20label%3Atimeline-request&type=issues"
+  );
 });
 
 test("queued report jobs can be canceled", async (t) => {

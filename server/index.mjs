@@ -250,6 +250,21 @@ function retrositeMode() {
   return mode === "request-only" ? "request-only" : "local";
 }
 
+function githubTimelineRequestSearchUrl(repo) {
+  const normalizedRepo = String(repo ?? "")
+    .trim()
+    .replace(/^https:\/\/github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^\/+|\/+$/g, "");
+
+  if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(normalizedRepo)) {
+    return null;
+  }
+
+  const query = `repo:${normalizedRepo} is:issue label:timeline-request`;
+  return `https://github.com/search?q=${encodeURIComponent(query)}&type=issues`;
+}
+
 function publicConfig() {
   const mode = retrositeMode();
   return {
@@ -257,7 +272,8 @@ function publicConfig() {
     canGenerateReports: mode === "local",
     canEditReports: mode === "local",
     canSubmitRequests: mode === "request-only",
-    requestSink: process.env.RETROSITE_REQUEST_SINK ?? "local"
+    requestSink: process.env.RETROSITE_REQUEST_SINK ?? "local",
+    requestStatusUrl: githubTimelineRequestSearchUrl(process.env.RETROSITE_REQUEST_REPO)
   };
 }
 

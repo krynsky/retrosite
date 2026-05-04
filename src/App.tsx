@@ -5,6 +5,9 @@ import { ReportsPage } from "./components/ReportsPage";
 import { SiteNav } from "./components/SiteNav";
 import { decodeTimelinePath } from "./helpers";
 
+const timelineRequestStatusUrl =
+  "https://github.com/search?q=repo%3Akrynsky%2Fretrosite%20is%3Aissue%20label%3Atimeline-request&type=issues";
+
 const demoProcessSteps = [
   {
     number: "01",
@@ -20,12 +23,25 @@ const demoProcessSteps = [
   },
   {
     number: "03",
+    title: "Review timeline request status",
+    summary: "Check the review queue for current and past timeline submissions.",
+    detail: (
+      <>
+        Each submission creates a GitHub issue with the submitted domain or path, original URL, and created time. Review
+        the filtered{" "}
+        <a href={timelineRequestStatusUrl}>timeline request issues</a>
+        {" "}to see open and closed requests without mixing in unrelated project issues.
+      </>
+    )
+  },
+  {
+    number: "04",
     title: "Author publishes updates",
     summary: "Approved timelines are generated, curated, and promoted into the demo.",
     detail: "The author runs Retrosite locally, reviews the Wayback captures and screenshots, publishes the finished timeline as static assets, then deploys the update so the new timeline appears in the public gallery."
   },
   {
-    number: "04",
+    number: "05",
     title: "Run your own copy",
     summary: "Anyone can create their own reports by downloading Retrosite from GitHub.",
     detail: "Clone or download the app from github.com/krynsky/retrosite, install the dependencies, run it on your own machine, and enter a public domain or path. Your local copy can discover Wayback captures, render screenshots, curate entries, and export a report without depending on the demo site."
@@ -73,7 +89,7 @@ const localUseSteps = [
 
 function AboutPage() {
   return (
-    <main className="page paper-bg">
+    <main className="page paper-bg about-page">
       <SiteNav />
       <section className="about-hero">
         <span className="eyebrow">

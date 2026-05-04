@@ -694,6 +694,10 @@ main {
   color: var(--ink-soft);
 }
 
+.about-page .about-hero p {
+  max-width: none;
+}
+
 .about-hero a,
 .about-notes a,
 .about-process a {
@@ -990,6 +994,27 @@ main {
   background: rgba(30, 138, 154, 0.08);
   color: var(--ballpoint);
   font-weight: 700;
+}
+
+.request-status-link {
+  max-width: 430px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.success-note a,
+.request-status-link a {
+  color: var(--marker-blue);
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+.success-note a:hover,
+.request-status-link a:hover {
+  color: var(--marker-pink);
 }
 
 .warning-note {
