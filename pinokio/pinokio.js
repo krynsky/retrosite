@@ -2,6 +2,7 @@ module.exports = {
   version: "7.0",
   title: "Retrosite",
   description: "Generate editable website timeline reports from Wayback Machine captures.",
+  icon: "favicon.ico",
   menu: async (kernel, info) => {
     const installed = info.exists("app/node_modules");
     const running = {
