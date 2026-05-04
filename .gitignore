@@ -2,7 +2,11 @@ node_modules/
 dist/
 .vite/
 .codex-logs/
+.claude/
 .claude/settings.local.json
+design_handoff/
+CODEX_HANDOFF.md
+HANDOFF.md
 server/generated/
 pinokio/app/
 pinokio/env/
