@@ -43,6 +43,7 @@ const cdxFallbackWindowYears = Number(process.env.RETROSITE_CDX_FALLBACK_WINDOW_
 const cdxFallbackLimit = Number(process.env.RETROSITE_CDX_FALLBACK_LIMIT ?? 1000);
 const cdxFallbackRetryCount = Number(process.env.RETROSITE_CDX_FALLBACK_RETRIES ?? 0);
 const cdxFallbackMaxQueries = Number(process.env.RETROSITE_CDX_FALLBACK_MAX_QUERIES ?? 4);
+const archivedPathDiscoveryLimit = Number(process.env.RETROSITE_ARCHIVED_PATH_DISCOVERY_LIMIT ?? 3000);
 const renderNavigationRetryCount = Number(process.env.RETROSITE_RENDER_NAV_RETRIES ?? 2);
 const renderNavigationRetryDelayMs = Number(process.env.RETROSITE_RENDER_NAV_RETRY_DELAY_MS ?? 1800);
 const maxActiveJobs = Number(process.env.RETROSITE_MAX_ACTIVE_JOBS ?? 3);
@@ -119,6 +120,70 @@ export function waybackQueryVariantsForTarget(reportTarget) {
   }
 
   return [...new Set(variants)];
+}
+
+export function normalizeArchiveMode(value) {
+  const mode = String(value ?? "best-year").toLowerCase();
+  return ["best-year", "homepage", "specific-path", "broad"].includes(mode) ? mode : "best-year";
+}
+
+function broadWaybackQueryStrategies(target) {
+  const prefixVariant = target.path === "/" ? `${target.domain}/` : `${target.domain}${target.path}/`;
+  return [
+    {
+      variant: prefixVariant,
+      matchType: "prefix",
+      collapseByYear: true,
+      broad: true,
+      limit: cdxFallbackLimit
+    },
+    {
+      variant: target.domain,
+      matchType: "host",
+      collapseByYear: true,
+      broad: true,
+      limit: cdxFallbackLimit
+    },
+    {
+      variant: target.domain,
+      matchType: "domain",
+      collapseByYear: true,
+      broad: true,
+      limit: cdxFallbackLimit
+    }
+  ];
+}
+
+export function waybackQueryStrategiesForTarget(reportTarget, { includeBroad = false, archiveMode = "best-year" } = {}) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  const exactStrategies = waybackQueryVariantsForTarget(target).map((variant) => ({
+    variant,
+    matchType: "exact",
+    collapseByYear: false,
+    broad: false
+  }));
+  const normalizedArchiveMode = normalizeArchiveMode(archiveMode);
+
+  if (normalizedArchiveMode === "broad") {
+    return broadWaybackQueryStrategies(target);
+  }
+
+  if (normalizedArchiveMode === "homepage" || normalizedArchiveMode === "specific-path" || !includeBroad) {
+    return exactStrategies;
+  }
+
+  return [...exactStrategies, ...broadWaybackQueryStrategies(target)];
+}
+
+export function archivedPathDiscoveryStrategyForTarget(reportTarget) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  return {
+    variant: target.domain,
+    matchType: "domain",
+    collapseByUrlKey: true,
+    broad: true,
+    limit: Number.isFinite(archivedPathDiscoveryLimit) ? Math.max(1, Math.round(archivedPathDiscoveryLimit)) : 3000
+  };
 }
 
 function isPublicDomain(host) {
@@ -431,10 +496,249 @@ export function adaptiveArchiveProfile({ depthMode = "adaptive", discovery }) {
   };
 }
 
+export function buildArchivePreflight(discovery, { depthMode = "adaptive" } = {}) {
+  const captures = Array.isArray(discovery?.captures)
+    ? discovery.captures
+        .filter((capture) => capture?.timestamp)
+        .slice()
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    : [];
+  const yearSummary = Array.isArray(discovery?.yearSummary)
+    ? discovery.yearSummary
+        .filter((summary) => summary?.year)
+        .slice()
+        .sort((a, b) => String(a.year).localeCompare(String(b.year)))
+    : [];
+  const captureCount = Number(discovery?.captureCount ?? captures.length);
+  const uniqueDigests = new Set(captures.map((capture) => capture.digest).filter(Boolean));
+  const firstTimestamp = captures[0]?.timestamp ?? yearSummary[0]?.firstTimestamp ?? null;
+  const latestTimestamp = captures.at(-1)?.timestamp ?? yearSummary.at(-1)?.lastTimestamp ?? null;
+  const firstYear = firstTimestamp ? Number(firstTimestamp.slice(0, 4)) : null;
+  const latestYear = latestTimestamp ? Number(latestTimestamp.slice(0, 4)) : null;
+  const yearsWithCaptures = new Map(yearSummary.map((summary) => [String(summary.year), Number(summary.count ?? 0)]));
+  const weakYears = [];
+
+  if (Number.isFinite(firstYear) && Number.isFinite(latestYear)) {
+    for (let year = firstYear; year <= latestYear; year += 1) {
+      const key = String(year);
+      const count = yearsWithCaptures.get(key) ?? 0;
+      if (count === 0) {
+        weakYears.push({ year: key, count, reason: "No homepage capture found for this year." });
+      } else if (count === 1) {
+        weakYears.push({ year: key, count, reason: "Only one unique homepage capture found for this year." });
+      }
+    }
+  }
+
+  const archiveProfile = adaptiveArchiveProfile({ depthMode, discovery: { ...discovery, captureCount } });
+  const failedQueryCount = Array.isArray(discovery?.variantStatus)
+    ? discovery.variantStatus.filter((status) => status.status === "failed").length
+    : 0;
+  const fallbackQueryCount = Array.isArray(discovery?.variantStatus)
+    ? discovery.variantStatus.filter((status) => status.fallback).length
+    : 0;
+  const warnings = [];
+  const captureYearCount = yearSummary.length;
+  const yearSpan =
+    Number.isFinite(firstYear) && Number.isFinite(latestYear)
+      ? Math.max(0, latestYear - firstYear + 1)
+      : captureYearCount;
+
+  if (captureCount === 0) {
+    warnings.push("No usable homepage captures were found before rendering.");
+  } else if (captureYearCount < 3) {
+    warnings.push("Thin archive: fewer than three capture years were found.");
+  }
+
+  if (weakYears.length > 0) {
+    warnings.push(`${weakYears.length} weak ${weakYears.length === 1 ? "year" : "years"} may produce a sparse timeline.`);
+  }
+
+  if (uniqueDigests.size > 0 && captureCount >= 5 && uniqueDigests.size / captureCount <= 0.5) {
+    warnings.push("Duplicate-heavy archive: repeated digests suggest parked, placeholder, or unchanged pages may dominate.");
+  }
+
+  if (failedQueryCount > 0 || fallbackQueryCount > 0 || discovery?.warning) {
+    warnings.push("Wayback query instability was detected; the run may need retries or narrower targeting.");
+  }
+
+  if (yearSpan > captureYearCount && captureYearCount > 0) {
+    warnings.push("Archive coverage has gaps between the first and latest capture years.");
+  }
+
+  return {
+    host: discovery?.host ?? "",
+    firstCaptureDate: firstTimestamp ? timestampDate(firstTimestamp) : null,
+    latestCaptureDate: latestTimestamp ? timestampDate(latestTimestamp) : null,
+    captureCount,
+    captureYearCount,
+    yearSpan,
+    uniqueDigestCount: uniqueDigests.size,
+    candidateCount: Array.isArray(discovery?.candidates) ? discovery.candidates.length : 0,
+    estimatedRunSize: archiveProfile.archiveSize,
+    recommendedDepthMode: archiveProfile.depthMode,
+    recommendedScreenshotLimit: archiveProfile.screenshotLimit,
+    weakYears,
+    warnings,
+    archiveProfile
+  };
+}
+
+export function buildArchiveInspection(reportTarget, discovery, pathCaptures, { depthMode = "adaptive" } = {}) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  return {
+    preflight: buildArchivePreflight(discovery, { depthMode }),
+    pathDiscovery: buildArchivedPathSuggestions(target, pathCaptures)
+  };
+}
+
+function normalizeOriginalCapturePath(original) {
+  try {
+    const withScheme = /^https?:\/\//i.test(original) ? original : `https://${original}`;
+    const url = new URL(withScheme);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    let pathname = url.pathname || "/";
+    try {
+      pathname = decodeURI(pathname);
+    } catch {
+      // Keep URL-normalized escapes for malformed historical paths.
+    }
+    pathname = pathname.replace(/\/{2,}/g, "/");
+    if (pathname.length > 1) {
+      pathname = pathname.replace(/\/+$/g, "");
+    }
+    return { hostname, pathname };
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyUsefulArchivedPath(pathname) {
+  if (!pathname || !pathname.startsWith("/") || pathname.length > 180) {
+    return false;
+  }
+  if (pathname.includes("\\")) {
+    return false;
+  }
+  if (/\.(?:css|js|mjs|map|json|xml|txt|png|jpe?g|gif|webp|svg|ico|bmp|avif|woff2?|ttf|eot|mp[34]|mov|avi|zip|gz|rar|7z|pdf|docx?|xlsx?|pptx?)$/i.test(pathname)) {
+    return false;
+  }
+  if (pathname.split("/").filter(Boolean).length > 4) {
+    return false;
+  }
+  return true;
+}
+
+function archivedPathPriority(pathname) {
+  const lowerPath = pathname.toLowerCase();
+  const priorities = new Map([
+    ["/", 100],
+    ["/index.html", 90],
+    ["/index.htm", 89],
+    ["/home.html", 84],
+    ["/home.htm", 83],
+    ["/home", 82],
+    ["/main.asp", 66],
+    ["/default.asp", 65],
+    ["/index.asp", 64],
+    ["/about", 70],
+    ["/about.html", 69],
+    ["/about.htm", 68]
+  ]);
+  if (priorities.has(lowerPath)) {
+    return priorities.get(lowerPath);
+  }
+  if (/\/(?:main|home|index|default)\.(?:asp|aspx|php|html?)$/i.test(pathname)) {
+    return 58;
+  }
+  if (/\/(?:about|news|blog|welcome|portal|start)(?:\/|$|\.)/i.test(pathname)) {
+    return 46;
+  }
+  return 30;
+}
+
+export function buildArchivedPathSuggestions(reportTarget, captures, { limit = 12 } = {}) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  const buckets = new Map();
+
+  for (const capture of Array.isArray(captures) ? captures : []) {
+    if (!capture?.timestamp || !capture?.original) {
+      continue;
+    }
+    const normalized = normalizeOriginalCapturePath(capture.original);
+    if (!normalized || normalized.hostname !== target.domain || !isLikelyUsefulArchivedPath(normalized.pathname)) {
+      continue;
+    }
+
+    const bucket = buckets.get(normalized.pathname) ?? {
+      path: normalized.pathname,
+      target: normalized.pathname === "/" ? target.domain : `${target.domain}${normalized.pathname}`,
+      captureCount: 0,
+      years: new Set(),
+      digests: new Set(),
+      firstTimestamp: capture.timestamp,
+      lastTimestamp: capture.timestamp,
+      sampleOriginal: capture.original
+    };
+    bucket.captureCount += 1;
+    bucket.years.add(capture.timestamp.slice(0, 4));
+    if (capture.digest) {
+      bucket.digests.add(capture.digest);
+    }
+    if (capture.timestamp < bucket.firstTimestamp) {
+      bucket.firstTimestamp = capture.timestamp;
+      bucket.sampleOriginal = capture.original;
+    }
+    if (capture.timestamp > bucket.lastTimestamp) {
+      bucket.lastTimestamp = capture.timestamp;
+    }
+    buckets.set(normalized.pathname, bucket);
+  }
+
+  const pathLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.round(Number(limit))) : 12;
+  const paths = [...buckets.values()]
+    .map((bucket) => {
+      const yearCount = bucket.years.size;
+      const uniqueDigestCount = bucket.digests.size;
+      const score =
+        archivedPathPriority(bucket.path) +
+        Math.min(bucket.captureCount, 3) +
+        Math.min(yearCount, 3) +
+        Math.min(uniqueDigestCount, 2);
+      return {
+        path: bucket.path,
+        target: bucket.target,
+        captureCount: bucket.captureCount,
+        yearCount,
+        uniqueDigestCount,
+        firstCaptureDate: timestampDate(bucket.firstTimestamp),
+        latestCaptureDate: timestampDate(bucket.lastTimestamp),
+        sampleOriginal: bucket.sampleOriginal,
+        calendarUrl: `https://web.archive.org/web/*/${bucket.target === target.domain ? `${target.domain}/` : bucket.target}`,
+        score,
+        reason:
+          bucket.path === "/"
+            ? "Homepage captures."
+            : archivedPathPriority(bucket.path) >= 58
+            ? "Likely historical entry point."
+            : "Archived content path."
+      };
+    })
+    .sort((a, b) => b.score - a.score || b.captureCount - a.captureCount || a.path.localeCompare(b.path))
+    .slice(0, pathLimit);
+
+  return {
+    host: target.domain,
+    target: target.target,
+    paths
+  };
+}
+
 function createQueuedReportJob({
   host,
   screenshotLimit,
   depthMode = "adaptive",
+  archiveMode = "best-year",
   notifyEmail,
   version = 1,
   message = "Report job created."
@@ -449,6 +753,7 @@ function createQueuedReportJob({
     host,
     version,
     depthMode: normalizedDepthMode,
+    archiveMode: normalizeArchiveMode(archiveMode),
     screenshotLimit,
     archiveProfile: null,
     status: "queued",
@@ -813,15 +1118,23 @@ export function cdxFallbackQueryWindows({
   return queries.slice(0, max);
 }
 
-export function cdxQueryParams(urlPattern, window = null) {
+export function cdxQueryParams(urlPattern, window = null, options = {}) {
+  const matchType = options.matchType ?? "exact";
   const params = new URLSearchParams({
     url: urlPattern,
-    matchType: "exact",
+    matchType,
     output: "json",
-    fl: "timestamp,original,statuscode,mimetype,digest",
-    filter: "statuscode:200",
-    collapse: "digest"
+    fl: "timestamp,original,statuscode,mimetype,digest"
   });
+  params.append("filter", "statuscode:200");
+  params.append("filter", "mimetype:text/html");
+  params.append("collapse", "digest");
+  if (options.collapseByYear) {
+    params.append("collapse", "timestamp:4");
+  }
+  if (options.collapseByUrlKey) {
+    params.append("collapse", "urlkey");
+  }
   if (window?.from) {
     params.set("from", window.from);
   }
@@ -834,12 +1147,71 @@ export function cdxQueryParams(urlPattern, window = null) {
   return params;
 }
 
-async function queryCdxOnce(urlPattern, window = null) {
+function normalizeCdxStrategy(strategyOrVariant) {
+  return typeof strategyOrVariant === "string"
+    ? {
+        variant: strategyOrVariant,
+        matchType: "exact",
+        collapseByYear: false,
+        broad: false
+      }
+    : {
+        matchType: "exact",
+        collapseByYear: false,
+        broad: false,
+        ...strategyOrVariant
+      };
+}
+
+function cdxWindowForStrategy(strategy, window = null) {
+  if (window) {
+    return {
+      ...window,
+      limit: window.limit ?? strategy.limit
+    };
+  }
+  return strategy.limit ? { limit: strategy.limit } : null;
+}
+
+export function parseCdxCaptures(body, source = "Wayback CDX") {
+  const text = String(body ?? "").trim();
+  if (!text) {
+    throw new Error(`${source} returned an empty response.`);
+  }
+
+  let rows;
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    throw new Error(`${source} returned malformed JSON.`);
+  }
+
+  if (!Array.isArray(rows)) {
+    throw new Error(`${source} returned an unexpected response.`);
+  }
+
+  if (rows.length < 2) {
+    return [];
+  }
+
+  const [header, ...captures] = rows;
+  if (!Array.isArray(header)) {
+    throw new Error(`${source} returned an unexpected response.`);
+  }
+
+  return captures
+    .filter((row) => Array.isArray(row))
+    .map((row) => Object.fromEntries(header.map((key, index) => [key, row[index]])));
+}
+
+async function queryCdxOnce(strategyOrVariant, window = null) {
+  const strategy = normalizeCdxStrategy(strategyOrVariant);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), cdxTimeoutMs);
-  const params = cdxQueryParams(urlPattern, window);
+  const params = cdxQueryParams(strategy.variant, cdxWindowForStrategy(strategy, window), strategy);
+  const range = window ? ` (${window.from ?? "start"}-${window.to ?? "latest"})` : "";
   try {
-    const response = await fetch(`https://web.archive.org/cdx?${params.toString()}`, {
+    const response = await fetch(`https://web.archive.org/cdx/?${params.toString()}`, {
       headers: { "user-agent": "Retrosite discovery prototype" },
       signal: controller.signal
     });
@@ -848,17 +1220,10 @@ async function queryCdxOnce(urlPattern, window = null) {
       throw new Error(`Wayback CDX returned ${response.status}`);
     }
 
-    const rows = await response.json();
-    if (!Array.isArray(rows) || rows.length < 2) {
-      return [];
-    }
-
-    const [header, ...captures] = rows;
-    return captures.map((row) => Object.fromEntries(header.map((key, index) => [key, row[index]])));
+    return parseCdxCaptures(await response.text(), `Wayback CDX for ${strategy.variant}${range}`);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      const range = window ? ` (${window.from}-${window.to})` : "";
-      throw new Error(`Wayback CDX timed out for ${urlPattern}${range}`);
+      throw new Error(`Wayback CDX timed out for ${strategy.variant}${range}`);
     }
     throw error;
   } finally {
@@ -866,13 +1231,14 @@ async function queryCdxOnce(urlPattern, window = null) {
   }
 }
 
-async function queryCdxFallbackWindows(urlPattern, broadError) {
+async function queryCdxFallbackWindows(strategyOrVariant, broadError) {
+  const strategy = normalizeCdxStrategy(strategyOrVariant);
   const windows = cdxFallbackQueryWindows();
   const windowResults = await mapWithConcurrency(windows, cdxConcurrency, async (window) => {
     let lastError = null;
     for (let attempt = 1; attempt <= cdxFallbackRetryCount + 1; attempt += 1) {
       try {
-        const captures = await queryCdxOnce(urlPattern, window);
+        const captures = await queryCdxOnce(strategy, window);
         return {
           status: "ok",
           window,
@@ -910,7 +1276,10 @@ async function queryCdxFallbackWindows(urlPattern, broadError) {
   const captures = [...captureMap.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   return {
-    variant: urlPattern,
+    variant: strategy.variant,
+    matchType: strategy.matchType,
+    broad: strategy.broad,
+    collapseByYear: strategy.collapseByYear,
     status: "ok",
     attempts: cdxRetryCount + 1 + windows.length,
     captureCount: captures.length,
@@ -923,13 +1292,17 @@ async function queryCdxFallbackWindows(urlPattern, broadError) {
   };
 }
 
-async function queryCdx(urlPattern) {
+async function queryCdx(strategyOrVariant) {
+  const strategy = normalizeCdxStrategy(strategyOrVariant);
   let lastError = null;
   for (let attempt = 1; attempt <= cdxRetryCount + 1; attempt += 1) {
     try {
-      const captures = await queryCdxOnce(urlPattern);
+      const captures = await queryCdxOnce(strategy);
       return {
-        variant: urlPattern,
+        variant: strategy.variant,
+        matchType: strategy.matchType,
+        broad: strategy.broad,
+        collapseByYear: strategy.collapseByYear,
         status: "ok",
         attempts: attempt,
         captureCount: captures.length,
@@ -944,13 +1317,16 @@ async function queryCdx(urlPattern) {
     }
   }
 
-  const fallbackResult = await queryCdxFallbackWindows(urlPattern, lastError);
+  const fallbackResult = await queryCdxFallbackWindows(strategy, lastError);
   if (fallbackResult) {
     return fallbackResult;
   }
 
   return {
-    variant: urlPattern,
+    variant: strategy.variant,
+    matchType: strategy.matchType,
+    broad: strategy.broad,
+    collapseByYear: strategy.collapseByYear,
     status: "failed",
     attempts: cdxRetryCount + 1,
     captureCount: 0,
@@ -1038,8 +1414,16 @@ function selectYearCandidateCaptures(yearCaptures) {
 
 export function pickCandidateEras(captures) {
   const byYear = new Map();
+  const digestByYear = new Map();
   for (const capture of captures) {
     const year = capture.timestamp.slice(0, 4);
+    if (capture.digest) {
+      const yearDigestKey = `${year}:${capture.digest}`;
+      if (digestByYear.has(yearDigestKey)) {
+        continue;
+      }
+      digestByYear.set(yearDigestKey, true);
+    }
     if (!byYear.has(year)) byYear.set(year, []);
     byYear.get(year).push(capture);
   }
@@ -1055,12 +1439,36 @@ export function pickCandidateEras(captures) {
 }
 
 async function discoverCaptures(target) {
+  return discoverCapturesWithMode(target);
+}
+
+async function discoverCapturesWithMode(target, { archiveMode = "best-year" } = {}) {
   const reportTarget = normalizeReportTarget(target);
   const host = reportTarget.target;
   const variants = waybackQueryVariantsForTarget(reportTarget);
+  const normalizedArchiveMode = normalizeArchiveMode(archiveMode);
+  const exactStrategies = waybackQueryStrategiesForTarget(reportTarget, { archiveMode: normalizedArchiveMode });
 
-  const variantResults = await mapWithConcurrency(variants, cdxConcurrency, queryCdx);
-  const successes = variantResults.filter((result) => result.status === "ok");
+  let variantResults = await mapWithConcurrency(exactStrategies, cdxConcurrency, queryCdx);
+  let successes = variantResults.filter((result) => result.status === "ok");
+
+  const exactCaptureMap = new Map();
+  for (const capture of successes.flatMap((result) => result.captures)) {
+    exactCaptureMap.set(`${capture.timestamp}:${capture.original}`, capture);
+  }
+  const exactCaptures = [...exactCaptureMap.values()];
+  const exactYearSummary = summarizeCaptures(exactCaptures);
+
+  if (normalizedArchiveMode === "best-year" && (successes.length === 0 || shouldBroadenDiscovery(exactCaptures, exactYearSummary))) {
+    const broadStrategies = waybackQueryStrategiesForTarget(reportTarget, {
+      archiveMode: normalizedArchiveMode,
+      includeBroad: true
+    }).filter((strategy) => strategy.broad);
+    const broadResults = await mapWithConcurrency(broadStrategies, cdxConcurrency, queryCdx);
+    variantResults = [...variantResults, ...broadResults];
+    successes = variantResults.filter((result) => result.status === "ok");
+  }
+
   const failures = variantResults.filter((result) => result.status === "failed");
   const fallbackRecoveries = successes.filter((result) => result.fallback);
 
@@ -1102,6 +1510,16 @@ async function discoverCaptures(target) {
       replayUrl: waybackReplayUrl(capture.timestamp, capture.original)
     }))
   };
+}
+
+function shouldBroadenDiscovery(captures, yearSummary) {
+  if (captures.length === 0) {
+    return true;
+  }
+  if (yearSummary.length < 5) {
+    return true;
+  }
+  return captures.length < 12;
 }
 
 function reusableDiscoveryCaptureCount(discovery) {
@@ -1796,6 +2214,7 @@ function publicJob(job) {
     progress: job.progress,
     message: job.message,
     depthMode: normalizeDepthMode(job.depthMode),
+    archiveMode: normalizeArchiveMode(job.archiveMode),
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
     archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
@@ -1834,6 +2253,7 @@ function publicJobSummary(job) {
     progress: job.progress,
     message: job.message,
     depthMode: normalizeDepthMode(job.depthMode),
+    archiveMode: normalizeArchiveMode(job.archiveMode),
     screenshotLimit: normalizeScreenshotLimit(job.screenshotLimit),
     archiveProfile: job.archiveProfile ?? null,
     createdAt: job.createdAt,
@@ -1866,6 +2286,7 @@ function normalizeStaticTimelineSummary(timeline) {
     progress: Number(timeline.progress ?? 100),
     message: timeline.message ?? "Bundled starter timeline.",
     depthMode: normalizeDepthMode(timeline.depthMode),
+    archiveMode: normalizeArchiveMode(timeline.archiveMode),
     screenshotLimit: normalizeScreenshotLimit(timeline.screenshotLimit),
     archiveProfile: timeline.archiveProfile ?? null,
     createdAt: timeline.createdAt ?? timeline.updatedAt ?? new Date(0).toISOString(),
@@ -2714,7 +3135,7 @@ async function runReportJob(job) {
 
     let discovery;
     try {
-      discovery = await discoverCaptures(job.target);
+      discovery = await discoverCapturesWithMode(job.target, { archiveMode: job.archiveMode });
     } catch (error) {
       const reusableDiscovery = findReusableDiscoveryForJob(job, reportJobs.values(), error);
       if (!reusableDiscovery) {
@@ -2895,6 +3316,7 @@ app.post("/api/reports", (request, response) => {
     }
 
     const requestedDepthMode = normalizeDepthMode(request.body?.depthMode);
+    const requestedArchiveMode = normalizeArchiveMode(request.body?.archiveMode);
     const requestedScreenshotLimit =
       request.body?.screenshotLimit == null
         ? depthScreenshotLimit(requestedDepthMode)
@@ -2904,6 +3326,7 @@ app.post("/api/reports", (request, response) => {
       host,
       screenshotLimit: requestedScreenshotLimit,
       depthMode: requestedDepthMode,
+      archiveMode: requestedArchiveMode,
       notifyEmail,
       version: nextVersionForDomain(host)
     });
@@ -3020,6 +3443,7 @@ app.post("/api/reports/:id/rerun", (request, response) => {
     host: latestJob.host,
     screenshotLimit: depthScreenshotLimit("adaptive"),
     depthMode: "adaptive",
+    archiveMode: normalizeArchiveMode(latestJob.archiveMode),
     notifyEmail: null,
     version: newVersion,
     message: `Re-run (version ${newVersion}) created from version ${latestJob.version ?? 1}.`
@@ -3124,6 +3548,7 @@ app.post("/api/reports/:id/retry", (request, response) => {
     host: sourceJob.host,
     screenshotLimit: normalizeScreenshotLimit(sourceJob.screenshotLimit),
     depthMode: normalizeDepthMode(sourceJob.depthMode),
+    archiveMode: normalizeArchiveMode(sourceJob.archiveMode),
     notifyEmail: sourceJob.notifyEmail ?? null,
     version: nextVersionForDomain(sourceJob.host),
     message: `Retry created from ${sourceJob.status} report job ${sourceJob.id}.`
@@ -3347,6 +3772,101 @@ app.get("/api/wayback/discover", async (request, response) => {
     response.json(await discoverCaptures(target));
   } catch (error) {
     response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected discovery error." });
+  }
+});
+
+app.get("/api/wayback/preflight", async (request, response) => {
+  try {
+    const target = String(request.query.url ?? "").trim();
+    if (!target) {
+      response.status(400).json({ error: "Missing url query parameter." });
+      return;
+    }
+
+    const depthMode = normalizeDepthMode(request.query.depthMode);
+    const archiveMode = normalizeArchiveMode(request.query.archiveMode);
+    const reportTarget = normalizeReportTarget(target);
+    let discovery;
+    try {
+      discovery = await discoverCapturesWithMode(reportTarget.target, { archiveMode });
+    } catch (error) {
+      const reusableDiscovery = findReusableDiscoveryForJob(
+        { id: `preflight:${reportTarget.target}`, target: reportTarget.target, host: reportTarget.target },
+        reportJobs.values(),
+        error
+      );
+      if (!reusableDiscovery) {
+        throw error;
+      }
+      discovery = reusableDiscovery;
+    }
+    response.json(buildArchivePreflight(discovery, { depthMode }));
+  } catch (error) {
+    response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected preflight error." });
+  }
+});
+
+app.get("/api/wayback/inspect", async (request, response) => {
+  try {
+    const target = String(request.query.url ?? "").trim();
+    if (!target) {
+      response.status(400).json({ error: "Missing url query parameter." });
+      return;
+    }
+
+    const depthMode = normalizeDepthMode(request.query.depthMode);
+    const archiveMode = normalizeArchiveMode(request.query.archiveMode);
+    const reportTarget = normalizeReportTarget(target);
+    const discoveryPromise = discoverCapturesWithMode(reportTarget.target, { archiveMode }).catch((error) => {
+      const reusableDiscovery = findReusableDiscoveryForJob(
+        { id: `inspect:${reportTarget.target}`, target: reportTarget.target, host: reportTarget.target },
+        reportJobs.values(),
+        error
+      );
+      if (!reusableDiscovery) {
+        throw error;
+      }
+      return reusableDiscovery;
+    });
+    const pathPromise = queryCdx(archivedPathDiscoveryStrategyForTarget(reportTarget));
+
+    const [discovery, pathResult] = await Promise.all([discoveryPromise, pathPromise]);
+    const payload = buildArchiveInspection(
+      reportTarget,
+      discovery,
+      pathResult.status === "ok" ? pathResult.captures : [],
+      { depthMode }
+    );
+
+    if (pathResult.status !== "ok") {
+      payload.pathDiscoveryError = pathResult.error ?? "Unable to discover archived paths.";
+    }
+
+    response.json(payload);
+  } catch (error) {
+    response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected archive inspection error." });
+  }
+});
+
+app.get("/api/wayback/paths", async (request, response) => {
+  try {
+    const target = String(request.query.url ?? "").trim();
+    if (!target) {
+      response.status(400).json({ error: "Missing url query parameter." });
+      return;
+    }
+
+    const reportTarget = normalizeReportTarget(target);
+    const pathStrategy = archivedPathDiscoveryStrategyForTarget(reportTarget);
+    const result = await queryCdx(pathStrategy);
+    if (result.status !== "ok") {
+      response.status(500).json({ error: result.error ?? "Unable to discover archived paths." });
+      return;
+    }
+
+    response.json(buildArchivedPathSuggestions(reportTarget, result.captures));
+  } catch (error) {
+    response.status(500).json({ error: error instanceof Error ? error.message : "Unexpected path discovery error." });
   }
 });
 

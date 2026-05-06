@@ -69,21 +69,85 @@ const localUseSteps = [
   },
   {
     number: "04",
-    title: "Create a timeline",
-    summary: "Enter a public domain or path, then create the timeline.",
-    detail: "Examples include `example.com`, `krynsky.com`, or `friendfeed.com/krynsky`. Retrosite queries Wayback Machine captures, renders screenshots in Chrome, and builds an editable draft."
+    title: "Inspect Archive",
+    summary: "Preview archive quality and find useful archived paths.",
+    detail: "This summarizes the Wayback history before rendering and discovers archived paths in one request. Retrosite reports the capture range, capture count, covered years, unique digest count, weak years, estimated archive size, render cap, and Wayback instability warnings. It also filters out assets and suggests likely targets such as `/`, `/index.html`, `/home.html`, `/about`, `/main.asp`, and other older entry points. Choosing a suggested path updates the target field and switches Source to Specific path."
   },
   {
     number: "05",
+    title: "Choose Depth",
+    summary: "Control how much Retrosite renders.",
+    detail: "Depth controls how much Retrosite renders. Higher depth can improve coverage, but large or unstable archives take longer and may produce more weak captures to curate."
+  },
+  {
+    number: "06",
+    title: "Choose Source",
+    summary: "Control where Retrosite searches the Wayback Machine.",
+    detail: "Source controls where Retrosite searches the Wayback Machine before it chooses candidate pages to render. Use it to decide whether Retrosite should stay on the homepage, use a specific path, or broaden discovery across the site when exact homepage captures are weak."
+  },
+  {
+    number: "07",
+    title: "Create a timeline",
+    summary: "Enter a public domain or path, then create the timeline.",
+    detail: "Examples include `example.com`, `krynsky.com`, or `friendfeed.com/krynsky`. Retrosite queries Wayback Machine captures, uses CDX filters for successful HTML captures, collapses repeated digests, samples across years, broadens discovery when exact homepage captures are too thin, renders screenshots in Chrome, and builds an editable draft."
+  },
+  {
+    number: "08",
     title: "Edit and curate",
     summary: "Review screenshots, labels, notes, and tech-stack fields.",
     detail: "Use the timeline view and local edit controls to choose better screenshots, exclude weak captures, and correct the text before exporting."
   },
   {
-    number: "06",
+    number: "09",
     title: "Export",
     summary: "Export Markdown or HTML with included screenshot assets.",
     detail: "Generated exports are zip packages so the timeline document and its screenshots stay together for your own archive, notes, or site."
+  }
+];
+
+const sourceModeNotes = [
+  {
+    title: "Best page per year",
+    detail:
+      "Default mode. Starts with exact homepage or path captures, then broadens to prefix, host, or domain discovery when exact captures are weak."
+  },
+  {
+    title: "Homepage only",
+    detail:
+      "Uses exact homepage variants only. Choose this when you want the timeline to represent the root site even if subpages have richer archives."
+  },
+  {
+    title: "Specific path",
+    detail:
+      "Uses exact captures for the path in the input, such as `example.com/about`. Inspect Archive path suggestions switch to this mode after you select a suggested path."
+  },
+  {
+    title: "Whole domain",
+    detail:
+      "Uses broader domain-level discovery. Choose this when old homepages are weak and you want Retrosite to look for stronger archived pages across the site."
+  }
+];
+
+const depthOptionNotes = [
+  {
+    title: "Adaptive",
+    detail:
+      "Recommended default. Retrosite estimates archive size and Wayback stability, then adjusts the render budget so small archives get normal coverage and large or unstable archives stay reliable."
+  },
+  {
+    title: "Quick",
+    detail:
+      "Fastest option. Renders fewer candidates, currently capped around 10 final screenshots, and is useful for a quick preview or for very unstable archives."
+  },
+  {
+    title: "Standard",
+    detail:
+      "Normal option. Uses the default screenshot depth, currently around 35 final screenshots, and is a good fit for average-sized archives."
+  },
+  {
+    title: "Deep",
+    detail:
+      "Most thorough option. Uses the maximum configured depth, currently around 50 final screenshots, and can take longer on large archives."
   }
 ];
 
@@ -124,7 +188,7 @@ function AboutPage() {
 
 function HowToUsePage() {
   return (
-    <main className="page paper-bg">
+    <main className="page paper-bg howto-page">
       <SiteNav />
       <section className="about-hero">
         <span className="eyebrow">
@@ -139,40 +203,37 @@ function HowToUsePage() {
         </p>
       </section>
 
-      <section className="about-process" aria-label="Local Retrosite workflow">
-        {localUseSteps.map((step) => (
-          <article key={step.number}>
-            <span>{step.number}</span>
-            <h2>{step.title}</h2>
-            <p>{step.summary}</p>
-            <p>{step.detail}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="about-notes">
-        <div>
-          <h2>Useful commands</h2>
-          <p>
-            For a repository install, use `npm run dev` to start Retrosite, `npm test` for the API and pipeline tests,
-            `npm run check` for TypeScript, and `npm run build` to verify a production build. Pinokio runs the start
-            command from its app screen.
-          </p>
-        </div>
-        <div>
-          <h2>Starter timelines</h2>
-          <p>
-            Normal installs include a small curated timeline set for browsing examples. The full public demo gallery is
-            restored only during the hosted demo deployment and is not part of regular local or Pinokio use.
-          </p>
-        </div>
-        <div>
-          <h2>Local data</h2>
-          <p>
-            Generated jobs and screenshots are stored under `server/generated/` inside the installed app. This folder is
-            intentionally local, ignored by git, and separate between a direct repository install and a Pinokio install.
-          </p>
-        </div>
+      <section className="howto-doc" aria-label="Local Retrosite instructions">
+        <section className="howto-section">
+          <h2>Basic workflow</h2>
+          <ol className="howto-list">
+            {localUseSteps.map((step) => (
+              <li key={step.number}>
+                <strong>{step.title}.</strong> {step.summary} {step.detail}
+                {step.number === "05" && (
+                  <dl className="howto-definition-list">
+                    {depthOptionNotes.map((note) => (
+                      <div key={note.title}>
+                        <dt>{note.title}</dt>
+                        <dd>{note.detail}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {step.number === "06" && (
+                  <dl className="howto-definition-list">
+                    {sourceModeNotes.map((note) => (
+                      <div key={note.title}>
+                        <dt>{note.title}</dt>
+                        <dd>{note.detail}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
       </section>
     </main>
   );

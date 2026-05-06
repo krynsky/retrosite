@@ -34,6 +34,7 @@ export type DiscoveryResult = {
 };
 
 export type DepthMode = "adaptive" | "quick" | "standard" | "deep";
+export type ArchiveMode = "best-year" | "homepage" | "specific-path" | "broad";
 
 export type ArchiveProfile = {
   depthMode: DepthMode;
@@ -42,6 +43,53 @@ export type ArchiveProfile = {
   failedQueryCount: number;
   screenshotLimit: number;
   reason: string;
+};
+
+export type ArchivedPathSuggestion = {
+  path: string;
+  target: string;
+  captureCount: number;
+  yearCount: number;
+  uniqueDigestCount: number;
+  firstCaptureDate: string;
+  latestCaptureDate: string;
+  sampleOriginal: string;
+  calendarUrl: string;
+  score: number;
+  reason: string;
+};
+
+export type ArchivedPathDiscovery = {
+  host: string;
+  target: string;
+  paths: ArchivedPathSuggestion[];
+};
+
+export type ArchivePreflight = {
+  host: string;
+  firstCaptureDate: string | null;
+  latestCaptureDate: string | null;
+  captureCount: number;
+  captureYearCount: number;
+  yearSpan: number;
+  uniqueDigestCount: number;
+  candidateCount: number;
+  estimatedRunSize: ArchiveProfile["archiveSize"];
+  recommendedDepthMode: DepthMode;
+  recommendedScreenshotLimit: number;
+  weakYears: Array<{
+    year: string;
+    count: number;
+    reason: string;
+  }>;
+  warnings: string[];
+  archiveProfile: ArchiveProfile;
+};
+
+export type ArchiveInspection = {
+  preflight: ArchivePreflight;
+  pathDiscovery: ArchivedPathDiscovery;
+  pathDiscoveryError?: string;
 };
 
 export type DraftReportEntry = {
@@ -145,6 +193,7 @@ export type ReportJob = {
   progress: number;
   message: string;
   depthMode: DepthMode;
+  archiveMode?: ArchiveMode;
   screenshotLimit: number;
   archiveProfile: ArchiveProfile | null;
   createdAt: string;
@@ -176,6 +225,7 @@ export type ReportJobSummary = {
   progress: number;
   message: string;
   depthMode: DepthMode;
+  archiveMode?: ArchiveMode;
   screenshotLimit: number;
   archiveProfile: ArchiveProfile | null;
   createdAt: string;

@@ -1,6 +1,8 @@
 # Retrosite
 
-Retrosite turns public Wayback Machine captures into visual website timeline reports.
+Retrosite turns public Wayback Machine captures into editable visual website timeline reports.
+
+Current release: `0.2.0`
 
 [View the demo site](https://retrosite.krynsky.com/)
 
@@ -8,16 +10,42 @@ Retrosite turns public Wayback Machine captures into visual website timeline rep
 
 ## What Retrosite Does
 
-Retrosite is a local web app for creating timeline reports from archived website captures. You enter a domain or domain/path, Retrosite queries the Wayback Machine, renders selected captures in Chrome, and builds an editable visual timeline.
+Retrosite is a local web app for creating timeline reports from archived website captures. You enter a domain or domain/path, inspect the available Wayback history, choose how deep the run should go, and generate an editable visual timeline from rendered archive captures.
 
-The hosted demo shows examples of finished timelines and accepts requests for future reports. To create your own reports, run the app locally.
+The hosted demo shows examples of finished timelines and accepts requests for future reports. Report generation, review, editing, versioning, and exports happen in the local app.
+
+## New in 0.2.0
+
+- Added `Inspect Archive`, a single request that summarizes Wayback history and discovers useful archived paths before report generation.
+- Added archive quality details for capture range, yearly coverage, unique digests, weak years, estimated run size, render cap, and Wayback availability warnings.
+- Added archived path suggestions so large sites can be narrowed to representative sections before rendering.
+- Added source controls for Best page per year, Homepage only, Specific path, and Whole domain.
+- Added depth controls for Adaptive, Quick, Standard, and Deep report generation.
+- Added smarter candidate picking with CDX status/mimetype filters, digest collapsing, balanced yearly sampling, broader URL matching, and bounded fallback windows.
+- Added safer Wayback JSON handling so empty or malformed CDX responses do not crash the archive check flow.
+- Added transient replay retry handling and clearer incomplete-report recovery controls.
+- Updated the home page so creation follows the real process: enter target, inspect archive, choose settings, create timeline.
+- Updated the How to Use page as a full-width single-page instruction guide for the new local workflow.
 
 ## Features
 
 - Generate reports from a public domain or domain/path.
-- Query Wayback Machine captures across common URL variants.
+- Inspect Wayback history before rendering screenshots.
+- Discover archived paths for sites whose important content is not on the homepage.
+- Choose archive source scope before generation:
+  - Best page per year: sample the strongest archived page for each year.
+  - Homepage only: focus the timeline on the root page.
+  - Specific path: generate from a chosen archived path.
+  - Whole domain: allow broader domain-wide discovery.
+- Choose generation depth before rendering:
+  - Adaptive: balances speed and coverage based on archive size.
+  - Quick: smaller render budget for faster first passes.
+  - Standard: broader coverage for normal reports.
+  - Deep: larger render budget for richer archives.
+- Query Wayback Machine captures across common URL variants and fallback windows.
 - Render candidate captures with Chrome through Playwright.
 - Score screenshot quality and try nearby same-year replacements for weak captures.
+- Show incomplete or thin reports with recovery guidance instead of a blank timeline.
 - Review and curate which captures appear in the final timeline.
 - Edit timeline labels, notes, and tech-stack fields.
 - Select a custom thumbnail for a timeline.
@@ -36,7 +64,7 @@ The demo site is available at:
 https://retrosite.krynsky.com/
 ```
 
-Use it to see what finished Retrosite timelines look like. The demo site is intentionally limited: it can show published examples and collect requests, but report generation and editing happen in the local app.
+Use it to see finished Retrosite timelines. The demo site is intentionally limited: it can show published examples and collect requests, but it does not run the local screenshot pipeline.
 
 ## Local Setup
 
@@ -68,10 +96,13 @@ http://127.0.0.1:4317/
 
 1. Start the app with `npm run dev`.
 2. Enter a domain or domain/path, such as `example.com` or `example.com/blog`.
-3. Wait for Wayback discovery and screenshot rendering to finish.
-4. Review the generated timeline.
-5. Use the local edit controls to adjust entries, notes, labels, screenshots, and thumbnail selection.
-6. Export the final report as Markdown or HTML.
+3. Select `Inspect Archive` to review Wayback coverage and discover archived paths in one request.
+4. If a suggested path is a better target, select it from the archive results.
+5. Choose a depth: Adaptive, Quick, Standard, or Deep.
+6. Choose a source: Best page per year, Homepage only, Specific path, or Whole domain.
+7. Select `Create Timeline` and wait for Wayback discovery and screenshot rendering to finish.
+8. Review the generated timeline and use the local controls to adjust entries, notes, labels, screenshots, and thumbnail selection.
+9. Export the final report as Markdown or HTML.
 
 Generated jobs and screenshots are stored locally under:
 
@@ -121,6 +152,15 @@ Retrosite includes a Pinokio launcher in `pinokio/`. Open that folder in Pinokio
 - `/timeline/:target` - timeline view.
 - `/timeline/:target/v/:version` - local generated timeline version view.
 
+## API Highlights
+
+- `POST /api/wayback/inspect` - archive summary and archived path discovery in one request.
+- `POST /api/wayback/preflight` - archive summary only.
+- `POST /api/wayback/paths` - archived path discovery only.
+- `POST /api/reports` - create a local report job with selected depth and source settings.
+- `GET /api/reports` - list locally generated reports.
+- `GET /api/reports/:target` - fetch the latest local report for a target.
+
 ## Project Structure
 
 ```text
@@ -137,7 +177,6 @@ server/
   *.test.mjs               Node test suite
 docs/
   MVP_RUNBOOK.md           Operations and hosting notes
-  BACKLOG.md               Remaining work
   PACKAGING.md             Local, Pinokio, and Vercel packaging notes
 demosite/
   og-image.png             Demo-site screenshot used by link previews
@@ -152,4 +191,4 @@ demosite/
 - There is no hosted multi-user account model.
 - Email notifications and durable hosted queues are not productionized yet.
 
-See `docs/BACKLOG.md` for the current backlog.
+See `backlog.md` for the current backlog.

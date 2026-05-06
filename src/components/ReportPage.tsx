@@ -31,7 +31,11 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const { config } = useAppConfig();
 
   const isRunning = job?.status === "queued" || job?.status === "running";
-  const entries = job?.report?.curatedEntries ?? [];
+  const curatedEntries = job?.report?.curatedEntries ?? [];
+  const renderedEntries = job?.report?.entries?.filter((entry) => (
+    entry.screenshotStatus === "rendered" && Boolean(entry.screenshotUrl)
+  )) ?? [];
+  const entries = curatedEntries.length > 0 ? curatedEntries : renderedEntries;
   const hasEntries = entries.length > 0;
   const isAdmin = config.canEditReports;
   const isDemoSite = config.mode === "request-only";
@@ -208,6 +212,8 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const isLatestVersion = version == null;
   const jobIsTerminal = job && !isRunning;
   const canManageReport = isAdmin && jobIsTerminal;
+  const hasReportWithoutEntries = Boolean(job?.report && !hasEntries && !isRunning);
+  const shouldShowJobProgress = Boolean(job && (isRunning || !job.report || hasReportWithoutEntries));
   const versionHistory = isAdmin && versions.length > 1 && (
     <div className="version-history">
       <h3>Version history</h3>
@@ -269,7 +275,7 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
           </p>
         )}
 
-        {job && (isRunning || !job.report) && (
+        {job && shouldShowJobProgress && (
           <>
             <JobProgress
               job={job}
@@ -294,6 +300,14 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
               </div>
             )}
             {versionHistory}
+            {hasReportWithoutEntries && (
+              <>
+                <RunSummary job={job} isAdmin={isAdmin} />
+                {isAdmin && (
+                  <AdminControls job={job} onJobChange={setJob} />
+                )}
+              </>
+            )}
           </>
         )}
 

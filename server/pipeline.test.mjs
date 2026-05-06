@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   adaptiveArchiveProfile,
+  archivedPathDiscoveryStrategyForTarget,
+  buildArchiveInspection,
+  buildArchivedPathSuggestions,
+  buildArchivePreflight,
   candidateRenderBudget,
   cdxQueryParams,
   cdxFallbackWindows,
@@ -9,14 +13,17 @@ import {
   depthScreenshotLimit,
   findReusableDiscoveryForJob,
   normalizeDepthMode,
+  normalizeArchiveMode,
   normalizeReportTarget,
   normalizeReportReadiness,
+  parseCdxCaptures,
   pickCandidateEras,
   reportCompletionPatch,
   selectEntriesForCandidateRender,
   selectSameYearAlternatives,
   shouldRetryReplayNavigation,
   shouldUseCdpScreenshotFallback,
+  waybackQueryStrategiesForTarget,
   waybackReplayUrlVariants,
   waybackQueryVariantsForTarget
 } from "./index.mjs";
@@ -111,6 +118,48 @@ test("candidate era selection samples more than the last capture per year", () =
       "20210601000000",
       "20211201000000"
     ]
+  );
+});
+
+test("archive modes map to explicit Wayback query strategies", () => {
+  assert.equal(normalizeArchiveMode("homepage"), "homepage");
+  assert.equal(normalizeArchiveMode("specific-path"), "specific-path");
+  assert.equal(normalizeArchiveMode("broad"), "broad");
+  assert.equal(normalizeArchiveMode("best-year"), "best-year");
+  assert.equal(normalizeArchiveMode("unexpected"), "best-year");
+
+  assert.deepEqual(
+    waybackQueryStrategiesForTarget("example.com", { archiveMode: "broad" }).map((strategy) => [
+      strategy.variant,
+      strategy.matchType,
+      strategy.broad
+    ]),
+    [
+      ["example.com/", "prefix", true],
+      ["example.com", "host", true],
+      ["example.com", "domain", true]
+    ]
+  );
+
+  assert.ok(
+    waybackQueryStrategiesForTarget("example.com/about", { archiveMode: "specific-path", includeBroad: true })
+      .every((strategy) => strategy.matchType === "exact" && strategy.variant.includes("/about"))
+  );
+});
+
+test("candidate era selection collapses repeated digests within a year before sampling", () => {
+  const captures = [
+    { ...capture("20010101000000"), original: "http://example.com/", digest: "same" },
+    { ...capture("20010201000000"), original: "http://www.example.com/", digest: "same" },
+    { ...capture("20010301000000"), original: "https://example.com/index.html", digest: "same" },
+    { ...capture("20010401000000"), original: "https://example.com/", digest: "changed" }
+  ];
+
+  const candidates = pickCandidateEras(captures);
+
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.timestamp),
+    ["20010101000000", "20010401000000"]
   );
 });
 
@@ -209,6 +258,176 @@ test("cdx fallback query params are bounded by year and row limit", () => {
   assert.equal(params.get("to"), "2000");
   assert.equal(params.get("limit"), "1000");
   assert.equal(params.get("collapse"), "digest");
+  assert.deepEqual(params.getAll("filter"), ["statuscode:200", "mimetype:text/html"]);
+});
+
+test("cdx query params support broader year-collapsed match strategies", () => {
+  const params = cdxQueryParams("example.com", { limit: 500 }, { matchType: "domain", collapseByYear: true });
+
+  assert.equal(params.get("url"), "example.com");
+  assert.equal(params.get("matchType"), "domain");
+  assert.equal(params.get("limit"), "500");
+  assert.deepEqual(params.getAll("collapse"), ["digest", "timestamp:4"]);
+  assert.deepEqual(params.getAll("filter"), ["statuscode:200", "mimetype:text/html"]);
+});
+
+test("cdx query params support url-key collapsed path discovery", () => {
+  const params = cdxQueryParams("example.com", { limit: 3000 }, { matchType: "domain", collapseByUrlKey: true });
+
+  assert.equal(params.get("matchType"), "domain");
+  assert.deepEqual(params.getAll("collapse"), ["digest", "urlkey"]);
+});
+
+test("cdx response parser reports empty or malformed Wayback responses", () => {
+  assert.throws(
+    () => parseCdxCaptures("", "Wayback CDX for twitter.com"),
+    /Wayback CDX for twitter\.com returned an empty response/
+  );
+  assert.throws(
+    () => parseCdxCaptures("<html></html>", "Wayback CDX for twitter.com"),
+    /Wayback CDX for twitter\.com returned malformed JSON/
+  );
+});
+
+test("cdx response parser maps valid Wayback rows into captures", () => {
+  assert.deepEqual(
+    parseCdxCaptures(
+      JSON.stringify([
+        ["timestamp", "original", "statuscode", "mimetype", "digest"],
+        ["20060930214639", "http://twitter.com/", "200", "text/html", "abc"]
+      ]),
+      "Wayback CDX for twitter.com"
+    ),
+    [
+      {
+        timestamp: "20060930214639",
+        original: "http://twitter.com/",
+        statuscode: "200",
+        mimetype: "text/html",
+        digest: "abc"
+      }
+    ]
+  );
+});
+
+test("wayback query strategies add prefix, host, and domain discovery for weak exact results", () => {
+  const strategies = waybackQueryStrategiesForTarget("example.com", { includeBroad: true });
+  const broadStrategies = strategies.filter((strategy) => strategy.broad);
+
+  assert.deepEqual(
+    broadStrategies.map((strategy) => [strategy.variant, strategy.matchType, strategy.collapseByYear]),
+    [
+      ["example.com/", "prefix", true],
+      ["example.com", "host", true],
+      ["example.com", "domain", true]
+    ]
+  );
+});
+
+test("archived path discovery uses bounded domain-level CDX strategy", () => {
+  assert.deepEqual(archivedPathDiscoveryStrategyForTarget("https://www.example.com/blog/post"), {
+    variant: "example.com",
+    matchType: "domain",
+    collapseByUrlKey: true,
+    broad: true,
+    limit: 3000
+  });
+});
+
+test("archived path suggestions rank useful pages and drop assets", () => {
+  const suggestions = buildArchivedPathSuggestions("example.com", [
+    { timestamp: "20010101000000", original: "http://example.com/", digest: "home-a" },
+    { timestamp: "20020101000000", original: "http://www.example.com/index.html", digest: "index-a" },
+    { timestamp: "20030101000000", original: "http://example.com/about", digest: "about-a" },
+    { timestamp: "20040101000000", original: "http://example.com/main.asp", digest: "main-a" },
+    { timestamp: "20050101000000", original: "http://example.com/assets/site.css", digest: "css-a" },
+    { timestamp: "20060101000000", original: "http://cdn.example.com/", digest: "cdn-a" },
+    { timestamp: "20070101000000", original: "http://example.com/about?ref=nav", digest: "about-b" }
+  ]);
+
+  assert.equal(suggestions.host, "example.com");
+  assert.deepEqual(
+    suggestions.paths.map((path) => path.path),
+    ["/", "/index.html", "/about", "/main.asp"]
+  );
+  assert.equal(suggestions.paths[2].captureCount, 2);
+  assert.equal(suggestions.paths[2].target, "example.com/about");
+  assert.equal(suggestions.paths[2].calendarUrl, "https://web.archive.org/web/*/example.com/about");
+});
+
+test("archive preflight summarizes coverage, digests, weak years, and warnings", () => {
+  const preflight = buildArchivePreflight(
+    {
+      host: "example.com",
+      captureCount: 7,
+      captures: [
+        { timestamp: "20010101000000", original: "https://example.com/", digest: "a" },
+        { timestamp: "20010201000000", original: "https://example.com/", digest: "a" },
+        { timestamp: "20020101000000", original: "https://example.com/", digest: "b" },
+        { timestamp: "20040101000000", original: "https://example.com/", digest: "b" },
+        { timestamp: "20050101000000", original: "https://example.com/", digest: "b" },
+        { timestamp: "20060101000000", original: "https://example.com/", digest: "c" },
+        { timestamp: "20060201000000", original: "https://example.com/", digest: "c" }
+      ],
+      yearSummary: [
+        { year: "2001", count: 2, firstTimestamp: "20010101000000", lastTimestamp: "20010201000000" },
+        { year: "2002", count: 1, firstTimestamp: "20020101000000", lastTimestamp: "20020101000000" },
+        { year: "2004", count: 1, firstTimestamp: "20040101000000", lastTimestamp: "20040101000000" },
+        { year: "2005", count: 1, firstTimestamp: "20050101000000", lastTimestamp: "20050101000000" },
+        { year: "2006", count: 2, firstTimestamp: "20060101000000", lastTimestamp: "20060201000000" }
+      ],
+      candidates: [],
+      variantStatus: [{ status: "failed" }, { status: "ok", fallback: true }]
+    },
+    { depthMode: "adaptive" }
+  );
+
+  assert.equal(preflight.host, "example.com");
+  assert.equal(preflight.firstCaptureDate, "2001-01-01");
+  assert.equal(preflight.latestCaptureDate, "2006-02-01");
+  assert.equal(preflight.captureYearCount, 5);
+  assert.equal(preflight.uniqueDigestCount, 3);
+  assert.equal(preflight.estimatedRunSize, "small");
+  assert.equal(preflight.recommendedDepthMode, "adaptive");
+  assert.deepEqual(
+    preflight.weakYears.map((year) => year.year),
+    ["2002", "2003", "2004", "2005"]
+  );
+  assert.ok(preflight.warnings.some((warning) => /duplicate|parked/i.test(warning)));
+  assert.ok(preflight.warnings.some((warning) => /Wayback/i.test(warning)));
+});
+
+test("archive inspection combines preflight and path discovery", () => {
+  const inspection = buildArchiveInspection(
+    "example.com",
+    {
+      host: "example.com",
+      captureCount: 2,
+      captures: [
+        { timestamp: "20010101000000", original: "http://example.com/", digest: "home-a" },
+        { timestamp: "20020101000000", original: "http://example.com/about", digest: "about-a" }
+      ],
+      yearSummary: [
+        { year: "2001", count: 1, firstTimestamp: "20010101000000", lastTimestamp: "20010101000000" },
+        { year: "2002", count: 1, firstTimestamp: "20020101000000", lastTimestamp: "20020101000000" }
+      ],
+      candidates: [],
+      variantStatus: []
+    },
+    [
+      { timestamp: "20010101000000", original: "http://example.com/", digest: "home-a" },
+      { timestamp: "20020101000000", original: "http://example.com/about", digest: "about-a" }
+    ],
+    { depthMode: "quick" }
+  );
+
+  assert.equal(inspection.preflight.host, "example.com");
+  assert.equal(inspection.preflight.recommendedDepthMode, "quick");
+  assert.equal(inspection.pathDiscovery.host, "example.com");
+  assert.deepEqual(
+    inspection.pathDiscovery.paths.map((path) => path.path),
+    ["/", "/about"]
+  );
 });
 
 test("cdx fallback query params can bound broad archive queries", () => {
