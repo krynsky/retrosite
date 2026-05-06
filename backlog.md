@@ -1,23 +1,37 @@
 # Retrosite Backlog
 
-Future feature ideas based on Wayback Machine and Internet Archive tools, APIs, and services.
+Feature ideas based on Wayback Machine and Internet Archive tools, APIs, and services.
 
-## Recommended Priority
+## Completed In 0.2.0
 
-1. Preflight archive quality report
-2. Smarter timeline candidate picker
-3. Explore archived paths mode
-4. Incomplete-report explanation and retry actions
-5. Wayback Changes integration
-6. Save Page Now integration
-7. Request triage improvements for the demo site
-8. Large-site pagination and resume support
-9. Archive density visualization
-10. Browser/bookmarklet companion
+- Archive preflight quality report.
+- Smarter timeline candidate picker.
+- Archived path discovery.
+- Combined `Inspect Archive` request for archive quality and path discovery.
+- Source controls for Best page per year, Homepage only, Specific path, and Whole domain.
+- Depth controls for Adaptive, Quick, Standard, and Deep.
+- Incomplete-report explanation and retry actions.
+- Safer Wayback CDX JSON handling for empty or malformed responses.
+- Transient Wayback replay retry handling.
+- Home page workflow reorganization around inspect, configure, and create.
+- Full-width How to Use documentation for the new local workflow.
 
-## 1. Preflight Archive Quality Report
+## Remaining Recommended Priority
+
+1. Wayback Changes integration
+2. Save Page Now integration
+3. Request triage improvements for the demo site
+4. Large-site pagination and resume support
+5. Archive density visualization
+6. Browser/bookmarklet companion
+
+## Completed: Preflight Archive Quality Report
 
 Before running screenshots, show whether a domain is likely to produce a good timeline.
+
+Status:
+- Completed in `0.2.0`.
+- Implemented through the archive preflight summary and the combined `Inspect Archive` workflow.
 
 Details:
 - First capture date.
@@ -38,9 +52,13 @@ Likely Wayback surfaces:
 - CDX API.
 - CDX filters and digest counts.
 
-## 2. Smarter Timeline Candidate Picker
+## Completed: Smarter Timeline Candidate Picker
 
 Improve capture selection using richer CDX query options.
+
+Status:
+- Completed in `0.2.0`.
+- Added digest collapsing, year balancing, source modes, broader match strategies, bounded fallback windows, and transient replay retry handling.
 
 Details:
 - Use `collapse=digest` to avoid repeated identical pages.
@@ -60,9 +78,13 @@ Likely Wayback surfaces:
 - CDX API.
 - CDX filtering, collapsing, and match modes.
 
-## 3. Explore Archived Paths Mode
+## Completed: Archived Path Discovery
 
 Add a discovery step that finds archived subpages, not only homepage captures.
+
+Status:
+- Completed in `0.2.0`.
+- Implemented as part of the combined `Inspect Archive` request, with path suggestions that can update the target and source mode before generation.
 
 Details:
 - Find archived paths for the submitted domain.
@@ -83,9 +105,13 @@ Likely Wayback surfaces:
 - CDX API with prefix/domain matching.
 - Wayback calendar URLs for reviewed paths.
 
-## 4. Incomplete-Report Explanation And Retry Actions
+## Completed: Incomplete-Report Explanation And Retry Actions
 
 Improve the local report page when a run finishes but does not produce enough curated entries.
+
+Status:
+- Completed in `0.2.0`.
+- Incomplete and thin reports now render actionable recovery guidance instead of failing into an empty or confusing report page.
 
 Details:
 - Explain the failure in human terms:
@@ -112,7 +138,7 @@ Likely Wayback surfaces:
 - CDX response metadata.
 - Screenshot quality diagnostics.
 
-## 5. Wayback Changes Integration
+## 1. Wayback Changes Integration
 
 Add comparison tools between archived versions.
 
@@ -133,7 +159,7 @@ Likely Wayback surfaces:
 - Existing screenshots.
 - Capture timestamps and replay URLs.
 
-## 6. Save Page Now Integration
+## 2. Save Page Now Integration
 
 Let Retrosite archive the current live page before or during a report run.
 
@@ -152,7 +178,7 @@ Likely Wayback surfaces:
 - Save Page Now.
 - Wayback save endpoint.
 
-## 7. Request Triage Improvements For The Demo Site
+## 3. Request Triage Improvements For The Demo Site
 
 Attach archive-health details to GitHub timeline request issues.
 
@@ -179,7 +205,7 @@ Likely Wayback surfaces:
 - Wayback calendar URLs.
 - GitHub issue body/comments.
 
-## 8. Large-Site Pagination And Resume Support
+## 4. Large-Site Pagination And Resume Support
 
 Improve reliability for large archives.
 
@@ -198,7 +224,7 @@ Likely Wayback surfaces:
 - CDX API pagination.
 - CDX resume keys.
 
-## 9. Archive Density Visualization
+## 5. Archive Density Visualization
 
 Add a compact visualization of archive coverage.
 
@@ -220,7 +246,7 @@ Likely Wayback surfaces:
 - Existing report discovery metadata.
 - Screenshot quality classifications.
 
-## 10. Browser Or Bookmarklet Companion
+## 6. Browser Or Bookmarklet Companion
 
 Create a lightweight way to send the current page to Retrosite.
 
