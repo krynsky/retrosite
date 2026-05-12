@@ -392,6 +392,93 @@ test("report creation accepts a path within a domain as its own target", async (
   assert.equal(reportJob.id, createdJob.id);
 });
 
+test("homepage submission can create a new version for an existing report with selected depth", async (t) => {
+  const { baseUrl, generatedRoot } = await startTestServerContext(t, testPort + 13, {
+    RETROSITE_RUNNER_MODE: "external"
+  });
+
+  const firstResponse = await fetch(`${baseUrl}/api/reports`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      url: "example-rerun.net",
+      depthMode: "quick",
+      archiveMode: "homepage"
+    })
+  });
+  assert.equal(firstResponse.status, 202);
+
+  const firstJob = await firstResponse.json();
+  assert.equal(firstJob.version, 1);
+  assert.equal(firstJob.depthMode, "quick");
+  assert.equal(firstJob.screenshotLimit, 10);
+
+  const firstJobFile = path.join(generatedRoot, "reports", reportStorageKey(firstJob), "job.json");
+  await waitForFile(firstJobFile);
+  const persistedJob = JSON.parse(await readFile(firstJobFile, "utf8"));
+  Object.assign(persistedJob, {
+    status: "complete",
+    stage: "complete",
+    progress: 100,
+    message: "Worker finished the generated report.",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+    report: {
+      title: "example-rerun.net visual timeline draft",
+      summary: "Worker-generated draft.",
+      publicationStatus: "draft",
+      publishedAt: null,
+      stats: {
+        captureCount: 1,
+        candidateCount: 1,
+        yearCount: 1,
+        range: "2001-2001",
+        renderedCount: 1,
+        selectedCount: 0
+      },
+      entries: [],
+      curatedEntries: []
+    }
+  });
+  await writeFile(firstJobFile, JSON.stringify(persistedJob, null, 2), "utf8");
+
+  const refreshResponse = await fetch(`${baseUrl}/api/reports/${firstJob.id}`);
+  assert.equal(refreshResponse.status, 200);
+  const refreshedJob = await refreshResponse.json();
+  assert.equal(refreshedJob.status, "incomplete");
+
+  const secondResponse = await fetch(`${baseUrl}/api/reports`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      url: "example-rerun.net",
+      depthMode: "deep",
+      archiveMode: "broad"
+    })
+  });
+  assert.equal(secondResponse.status, 202);
+
+  const secondJob = await secondResponse.json();
+  assert.notEqual(secondJob.id, firstJob.id);
+  assert.equal(secondJob.host, "example-rerun.net");
+  assert.equal(secondJob.version, 2);
+  assert.equal(secondJob.depthMode, "deep");
+  assert.equal(secondJob.archiveMode, "broad");
+  assert.ok(secondJob.screenshotLimit > firstJob.screenshotLimit);
+  assert.match(secondJob.message, /New version 2 created from homepage submission/);
+
+  const versionsResponse = await fetch(`${baseUrl}/api/reports/example-rerun.net/versions`);
+  assert.equal(versionsResponse.status, 200);
+  const versionsPayload = await versionsResponse.json();
+  assert.deepEqual(
+    versionsPayload.versions.map((version) => version.version),
+    [2, 1]
+  );
+});
+
 test("krynsky.com version zero is not served as a static seed report", async (t) => {
   const baseUrl = await startTestServer(t, testPort + 12, { RETROSITE_RUNNER_MODE: "external" });
 

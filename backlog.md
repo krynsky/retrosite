@@ -16,14 +16,18 @@ Feature ideas based on Wayback Machine and Internet Archive tools, APIs, and ser
 - Home page workflow reorganization around inspect, configure, and create.
 - Full-width How to Use documentation for the new local workflow.
 
+## Completed After 0.2.0
+
+- Configurable homepage re-runs for existing reports.
+- Save Page Now integration for report generation.
+
 ## Remaining Recommended Priority
 
 1. Wayback Changes integration
-2. Save Page Now integration
-3. Request triage improvements for the demo site
-4. Large-site pagination and resume support
-5. Archive density visualization
-6. Browser/bookmarklet companion
+2. Request triage improvements for the demo site
+3. Large-site pagination and resume support
+4. Archive density visualization
+5. Browser/bookmarklet companion
 
 ## Completed: Preflight Archive Quality Report
 
@@ -138,6 +142,26 @@ Likely Wayback surfaces:
 - CDX response metadata.
 - Screenshot quality diagnostics.
 
+## Completed: Configurable Homepage Re-Runs
+
+Allow the homepage form to create a new report version even when the target already has a completed or incomplete report.
+
+Status:
+- Completed after `0.2.0`.
+- Re-submitting a previously generated target from the homepage now creates the next version with the selected depth and source controls.
+- Active jobs for the same target are still blocked so duplicate runs do not compete with each other.
+
+Details:
+- Enter a domain or path that already has a report.
+- Choose a different depth, such as Quick, Standard, or Deep.
+- Choose a source, such as Homepage only, Specific path, Best page per year, or Whole domain.
+- Submit from the homepage to create a new version instead of redirecting to the existing report.
+
+Why it matters:
+- Makes re-runs discoverable from the same place users create reports.
+- Allows deeper or narrower follow-up runs without needing a separate report-page control.
+- Keeps version history intact for comparing attempts.
+
 ## 1. Wayback Changes Integration
 
 Add comparison tools between archived versions.
@@ -159,15 +183,21 @@ Likely Wayback surfaces:
 - Existing screenshots.
 - Capture timestamps and replay URLs.
 
-## 2. Save Page Now Integration
+## Completed: Save Page Now Integration
 
 Let Retrosite archive the current live page before or during a report run.
 
+Status:
+- Completed after `0.2.0`.
+- Report generation now asks Wayback to save the submitted live URL while discovery runs.
+- When Wayback returns a usable timestamp, Retrosite stores the result on the job, merges it into discovery, and prioritizes it for candidate rendering.
+- If Wayback throttles, times out, or accepts the save without an immediate timestamp, the report continues with existing captures.
+
 Details:
-- Add "Save current page before report."
-- Add "Add today as final timeline entry."
-- Add "Archive this URL now" from a local report page.
-- Store the Save Page Now result as a final candidate capture when available.
+- Save current page during report generation.
+- Add today as a current timeline candidate when Wayback returns the capture.
+- Store the Save Page Now result on the report job.
+- Keep the operation best-effort so Save Page Now outages do not block reports.
 
 Why it matters:
 - Produces a better past-to-present timeline.
@@ -178,7 +208,7 @@ Likely Wayback surfaces:
 - Save Page Now.
 - Wayback save endpoint.
 
-## 3. Request Triage Improvements For The Demo Site
+## 2. Request Triage Improvements For The Demo Site
 
 Attach archive-health details to GitHub timeline request issues.
 
@@ -205,7 +235,7 @@ Likely Wayback surfaces:
 - Wayback calendar URLs.
 - GitHub issue body/comments.
 
-## 4. Large-Site Pagination And Resume Support
+## 3. Large-Site Pagination And Resume Support
 
 Improve reliability for large archives.
 
@@ -224,7 +254,7 @@ Likely Wayback surfaces:
 - CDX API pagination.
 - CDX resume keys.
 
-## 5. Archive Density Visualization
+## 4. Archive Density Visualization
 
 Add a compact visualization of archive coverage.
 
@@ -246,7 +276,7 @@ Likely Wayback surfaces:
 - Existing report discovery metadata.
 - Screenshot quality classifications.
 
-## 6. Browser Or Bookmarklet Companion
+## 5. Browser Or Bookmarklet Companion
 
 Create a lightweight way to send the current page to Retrosite.
 

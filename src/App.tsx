@@ -89,7 +89,7 @@ const localUseSteps = [
     number: "07",
     title: "Create a timeline",
     summary: "Enter a public domain or path, then create the timeline.",
-    detail: "Examples include `example.com`, `krynsky.com`, or `friendfeed.com/krynsky`. Retrosite queries Wayback Machine captures, uses CDX filters for successful HTML captures, collapses repeated digests, samples across years, broadens discovery when exact homepage captures are too thin, renders screenshots in Chrome, and builds an editable draft."
+    detail: "Examples include `example.com`, `krynsky.com`, or `friendfeed.com/krynsky`. Retrosite asks Wayback to save the current live page while it queries existing captures. If Wayback returns that new capture in time, Retrosite adds it as a current candidate so the report can end with today's version. Retrosite also uses CDX filters for successful HTML captures, collapses repeated digests, samples across years, broadens discovery when exact homepage captures are too thin, renders screenshots in Chrome, and builds an editable draft. If the target already has a finished report, submitting it again from the homepage creates a new version using the selected depth and source."
   },
   {
     number: "08",

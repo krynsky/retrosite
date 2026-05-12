@@ -25,7 +25,6 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
   const [actionError, setActionError] = useState("");
   const [shareCopyMessage, setShareCopyMessage] = useState("");
   const [versions, setVersions] = useState<ReportVersionSummary[]>([]);
-  const [rerunning, setRerunning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletingVersionId, setDeletingVersionId] = useState("");
   const { config } = useAppConfig();
@@ -141,21 +140,6 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to retry job.");
       setActionSaving(false);
-    }
-  }
-
-  async function rerunReport() {
-    if (!job) return;
-    setRerunning(true);
-    setActionError("");
-    try {
-      const response = await fetch(`/api/reports/${encodeURIComponent(domain)}/rerun`, { method: "POST" });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to re-run report.");
-      window.location.assign(timelinePath(payload.host ?? domain));
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "Unable to re-run report.");
-      setRerunning(false);
     }
   }
 
@@ -339,20 +323,18 @@ export function ReportPage({ domain, version }: { domain: string; version?: numb
                   {canManageReport && (
                     <>
                       {isLatestVersion && (
-                        <button
-                          type="button"
+                        <a
                           className="primary-link compact"
-                          disabled={rerunning || deleting}
-                          onClick={() => void rerunReport()}
+                          href={`/?target=${encodeURIComponent(job.host ?? domain)}`}
                         >
-                          {rerunning ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                          Re-run report
-                        </button>
+                          <RefreshCw size={16} />
+                          New version
+                        </a>
                       )}
                       <button
                         type="button"
                         className="ghost-link compact"
-                        disabled={deleting || rerunning}
+                        disabled={deleting}
                         onClick={() => void deleteReport()}
                       >
                         {deleting ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}

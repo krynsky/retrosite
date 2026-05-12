@@ -26,6 +26,7 @@ The hosted demo shows examples of finished timelines and accepts requests for fu
 - Added transient replay retry handling and clearer incomplete-report recovery controls.
 - Updated the home page so creation follows the real process: enter target, inspect archive, choose settings, create timeline.
 - Updated the How to Use page as a full-width single-page instruction guide for the new local workflow.
+- Added best-effort Save Page Now support during report generation so the current live page can be added as the latest candidate capture when Wayback returns it in time.
 
 ## Features
 
@@ -43,6 +44,7 @@ The hosted demo shows examples of finished timelines and accepts requests for fu
   - Standard: broader coverage for normal reports.
   - Deep: larger render budget for richer archives.
 - Query Wayback Machine captures across common URL variants and fallback windows.
+- Ask Wayback to archive the current live page during report generation and include that capture as the latest entry when available.
 - Render candidate captures with Chrome through Playwright.
 - Score screenshot quality and try nearby same-year replacements for weak captures.
 - Show incomplete or thin reports with recovery guidance instead of a blank timeline.
@@ -52,6 +54,7 @@ The hosted demo shows examples of finished timelines and accepts requests for fu
 - Browse timelines in full timeline mode or image-only mode.
 - Open screenshots in a full-size modal.
 - Keep version history for generated timelines.
+- Re-submit an existing target from the homepage to create a new version with a different depth or source.
 - Delete reports or older versions locally.
 - Export finished reports as Markdown or HTML packages with screenshot assets.
 - Infer tech stack details such as WordPress and FrontPage versions, readable WordPress theme/plugin names, and legacy ASP-link signals.
@@ -100,9 +103,10 @@ http://127.0.0.1:4317/
 4. If a suggested path is a better target, select it from the archive results.
 5. Choose a depth: Adaptive, Quick, Standard, or Deep.
 6. Choose a source: Best page per year, Homepage only, Specific path, or Whole domain.
-7. Select `Create Timeline` and wait for Wayback discovery and screenshot rendering to finish.
+7. Select `Create Timeline` and wait for Wayback discovery and screenshot rendering to finish. During generation, Retrosite also asks Wayback to save the current live page and adds that capture as the latest candidate when Wayback returns it in time.
 8. Review the generated timeline and use the local controls to adjust entries, notes, labels, screenshots, and thumbnail selection.
-9. Export the final report as Markdown or HTML.
+9. To re-run an existing target with different settings, use `New version` from the report page or enter the same domain/path on the homepage, choose the new depth and source, then select `Create Timeline` to create the next version.
+10. Export the final report as Markdown or HTML.
 
 Generated jobs and screenshots are stored locally under:
 
@@ -141,7 +145,7 @@ npm run start
 
 ## Pinokio
 
-Retrosite includes a Pinokio launcher in `pinokio/`. Open that folder in Pinokio, then run `Install` and `Start`. The launcher clones the app, installs dependencies, installs Playwright Chromium, starts the local dev stack, and keeps generated reports under `pinokio/app/server/generated/`.
+Retrosite includes Pinokio launcher files at the repository root. Open the Retrosite folder in Pinokio, then run `Install` and `Start`. The launcher installs the current install-lite app payload, installs dependencies, installs Playwright Chromium, starts the local dev stack, and keeps generated reports under `app/server/generated/`.
 
 ## Routes
 

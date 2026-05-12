@@ -26,14 +26,14 @@ The local app can create reports, render screenshots, edit timelines, export Mar
 
 ## Pinokio App
 
-The Pinokio launcher lives in `pinokio/` and is a thin wrapper around the normal local app. It:
+The Pinokio launcher lives at the repository root and is a thin wrapper around the normal local app. It:
 
-- Clones the GitHub repo into `pinokio/app/`.
+- Downloads the current install-lite app payload into `app/`.
 - Runs `npm install`.
 - Installs Playwright Chromium for screenshot rendering.
-- Starts `npm run dev`.
-- Opens `http://127.0.0.1:5173/`.
-- Keeps `pinokio/app/server/generated/` local and persistent.
+- Starts `npm run dev:pinokio`.
+- Opens `http://127.0.0.1:5273/`.
+- Keeps `app/server/generated/` local and persistent.
 
 The main repo remains runnable without Pinokio-specific assumptions. Pinokio start sets `RETROSITE_USE_BUNDLED_CHROMIUM=1` so the screenshot renderer uses the browser installed by the launcher.
 

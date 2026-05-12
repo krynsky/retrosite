@@ -19,6 +19,8 @@ import {
   parseCdxCaptures,
   pickCandidateEras,
   reportCompletionPatch,
+  mergeSavePageNowCapture,
+  savePageNowCaptureFromResponse,
   selectEntriesForCandidateRender,
   selectSameYearAlternatives,
   shouldRetryReplayNavigation,
@@ -181,6 +183,19 @@ test("candidate render selection balances years before deeper same-year samples"
   );
 });
 
+test("candidate render selection keeps Save Page Now entry in the render budget", () => {
+  const entries = Array.from({ length: 24 }, (_, index) => ({
+    ...capture(`${2000 + index}0101000000`),
+    candidateRank: 0
+  }));
+  entries.push({ ...capture("20260508000000"), candidateRank: -1, savePageNow: true });
+
+  const selected = selectEntriesForCandidateRender(entries, 10);
+
+  assert.equal(selected[0].timestamp, "20260508000000");
+  assert.equal(selected[0].savePageNow, true);
+});
+
 test("candidate render budget renders beyond the final screenshot limit", () => {
   const job = {
     screenshotLimit: 4,
@@ -190,6 +205,54 @@ test("candidate render budget renders beyond the final screenshot limit", () => 
   };
 
   assert.equal(candidateRenderBudget(job), 8);
+});
+
+test("Save Page Now response parsing extracts a current Wayback capture", () => {
+  const captureResult = savePageNowCaptureFromResponse({
+    originalUrl: "https://example.com/",
+    headers: {
+      "content-location": "/web/20260508123456/https://example.com/"
+    }
+  });
+
+  assert.deepEqual(captureResult, {
+    timestamp: "20260508123456",
+    date: "2026-05-08",
+    original: "https://example.com/",
+    replayUrl: "https://web.archive.org/web/20260508123456if_/https://example.com/",
+    statuscode: "200",
+    mimetype: "text/html",
+    digest: "save-page-now:20260508123456",
+    savePageNow: true
+  });
+});
+
+test("Save Page Now capture is merged into discovery as a final candidate", () => {
+  const discovery = {
+    host: "example.com",
+    queriedVariants: ["https://example.com/"],
+    variantStatus: [],
+    warning: null,
+    captureCount: 1,
+    yearSummary: [],
+    candidates: [capture("20200101000000")],
+    captures: [capture("20200101000000")]
+  };
+
+  const merged = mergeSavePageNowCapture(discovery, {
+    ...capture("20260508123456"),
+    original: "https://example.com/",
+    savePageNow: true
+  });
+
+  assert.equal(merged.captureCount, 2);
+  assert.deepEqual(
+    merged.yearSummary.map((year) => year.year),
+    ["2020", "2026"]
+  );
+  assert.equal(merged.candidates.at(-1).timestamp, "20260508123456");
+  assert.equal(merged.candidates.at(-1).rank, -1);
+  assert.equal(merged.candidates.at(-1).savePageNow, true);
 });
 
 test("depth modes map to predictable screenshot limits", () => {
@@ -324,6 +387,20 @@ test("wayback query strategies add prefix, host, and domain discovery for weak e
   );
 });
 
+test("twitter homepage discovery uses bounded high-volume fallback", () => {
+  assert.deepEqual(waybackQueryStrategiesForTarget("twitter.com"), [
+    {
+      variant: "http://twitter.com/",
+      matchType: "exact",
+      collapseByYear: true,
+      broad: false,
+      fallbackOnly: true,
+      fallbackYears: Array.from({ length: 19 }, (_, index) => 2006 + index),
+      fallbackMaxQueries: 14
+    }
+  ]);
+});
+
 test("archived path discovery uses bounded domain-level CDX strategy", () => {
   assert.deepEqual(archivedPathDiscoveryStrategyForTarget("https://www.example.com/blog/post"), {
     variant: "example.com",
@@ -447,6 +524,30 @@ test("cdx fallback queries try bounded broad query before limited year windows",
     { from: "1996", to: "2000", limit: 1000 },
     { from: "2001", to: "2005", limit: 1000 }
   ]);
+});
+
+test("cdx fallback query params can collapse exact captures by year", () => {
+  const params = cdxQueryParams(
+    "http://twitter.com/",
+    { from: "2006", to: "2010", limit: 1000 },
+    { matchType: "exact", collapseByYear: true }
+  );
+
+  assert.equal(params.get("url"), "http://twitter.com/");
+  assert.equal(params.get("matchType"), "exact");
+  assert.equal(params.get("from"), "2006");
+  assert.equal(params.get("to"), "2010");
+  assert.deepEqual(params.getAll("collapse"), ["digest", "timestamp:4"]);
+});
+
+test("cdx fallback query windows can target explicit high-volume years", () => {
+  assert.deepEqual(
+    cdxFallbackQueryWindows({ years: [2017, 2006, 2013, 2017], limit: 1000, maxQueries: 2 }),
+    [
+      { from: "2006", to: "2006", limit: 1000 },
+      { from: "2013", to: "2013", limit: 1000 }
+    ]
+  );
 });
 
 test("failed discovery can reuse the latest same-target discovery with captures", () => {

@@ -44,6 +44,9 @@ const cdxFallbackLimit = Number(process.env.RETROSITE_CDX_FALLBACK_LIMIT ?? 1000
 const cdxFallbackRetryCount = Number(process.env.RETROSITE_CDX_FALLBACK_RETRIES ?? 0);
 const cdxFallbackMaxQueries = Number(process.env.RETROSITE_CDX_FALLBACK_MAX_QUERIES ?? 4);
 const archivedPathDiscoveryLimit = Number(process.env.RETROSITE_ARCHIVED_PATH_DISCOVERY_LIMIT ?? 3000);
+const savePageNowTimeoutMs = Number(process.env.RETROSITE_SAVE_PAGE_NOW_TIMEOUT_MS ?? 20000);
+const savePageNowAccessKey = process.env.RETROSITE_WAYBACK_ACCESS_KEY ?? "";
+const savePageNowSecretKey = process.env.RETROSITE_WAYBACK_SECRET_KEY ?? "";
 const renderNavigationRetryCount = Number(process.env.RETROSITE_RENDER_NAV_RETRIES ?? 2);
 const renderNavigationRetryDelayMs = Number(process.env.RETROSITE_RENDER_NAV_RETRY_DELAY_MS ?? 1800);
 const maxActiveJobs = Number(process.env.RETROSITE_MAX_ACTIVE_JOBS ?? 3);
@@ -154,15 +157,38 @@ function broadWaybackQueryStrategies(target) {
   ];
 }
 
+function twitterArchiveFallbackYears() {
+  return Array.from({ length: 19 }, (_, index) => 2006 + index);
+}
+
+function highVolumeHomepageStrategy(target) {
+  if (target.domain !== "twitter.com" || target.path !== "/") {
+    return null;
+  }
+
+  return {
+    variant: "http://twitter.com/",
+    matchType: "exact",
+    collapseByYear: true,
+    broad: false,
+    fallbackOnly: true,
+    fallbackYears: twitterArchiveFallbackYears(),
+    fallbackMaxQueries: 14
+  };
+}
+
 export function waybackQueryStrategiesForTarget(reportTarget, { includeBroad = false, archiveMode = "best-year" } = {}) {
   const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
-  const exactStrategies = waybackQueryVariantsForTarget(target).map((variant) => ({
-    variant,
-    matchType: "exact",
-    collapseByYear: false,
-    broad: false
-  }));
   const normalizedArchiveMode = normalizeArchiveMode(archiveMode);
+  const highVolumeStrategy = highVolumeHomepageStrategy(target);
+  const exactStrategies = highVolumeStrategy
+    ? [highVolumeStrategy]
+    : waybackQueryVariantsForTarget(target).map((variant) => ({
+        variant,
+        matchType: "exact",
+        collapseByYear: false,
+        broad: false
+      }));
 
   if (normalizedArchiveMode === "broad") {
     return broadWaybackQueryStrategies(target);
@@ -769,6 +795,7 @@ function createQueuedReportJob({
         message
       }
     ],
+    savePageNow: null,
     discovery: null,
     report: null,
     error: null,
@@ -801,6 +828,12 @@ export function shouldRetryReplayNavigation(error) {
 
 function timestampDate(timestamp) {
   return `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}`;
+}
+
+function liveUrlForReportTarget(reportTarget) {
+  const target = typeof reportTarget === "string" ? normalizeReportTarget(reportTarget) : reportTarget;
+  const pathPart = target.path === "/" ? "/" : target.path;
+  return `https://${target.domain}${pathPart}`;
 }
 
 function delay(ms) {
@@ -1079,6 +1112,11 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error ?? "Unknown error");
 }
 
+function shortStatusMessage(value, fallback = "Unknown status.") {
+  const message = String(value ?? fallback).replace(/\s+/g, " ").trim();
+  return message.length > 240 ? `${message.slice(0, 237)}...` : message;
+}
+
 export function cdxFallbackWindows({
   fromYear = cdxFallbackStartYear,
   toYear = new Date().getUTCFullYear(),
@@ -1105,8 +1143,20 @@ export function cdxFallbackQueryWindows({
   toYear = new Date().getUTCFullYear(),
   windowYears = cdxFallbackWindowYears,
   limit = cdxFallbackLimit,
-  maxQueries = cdxFallbackMaxQueries
+  maxQueries = cdxFallbackMaxQueries,
+  years = null
 } = {}) {
+  if (Array.isArray(years) && years.length > 0) {
+    const uniqueYears = [...new Set(years.map((year) => Number(year)).filter((year) => Number.isFinite(year)))]
+      .sort((a, b) => a - b);
+    const maxYearQueries = Math.max(1, Number.isFinite(Number(maxQueries)) ? Number(maxQueries) : uniqueYears.length);
+    return uniqueYears.slice(0, maxYearQueries).map((year) => ({
+      from: String(year),
+      to: String(year),
+      limit
+    }));
+  }
+
   const queries = [
     { limit },
     ...cdxFallbackWindows({ fromYear, toYear, windowYears }).map((window) => ({
@@ -1116,6 +1166,23 @@ export function cdxFallbackQueryWindows({
   ];
   const max = Math.max(1, Number.isFinite(Number(maxQueries)) ? Number(maxQueries) : queries.length);
   return queries.slice(0, max);
+}
+
+function highVolumeExactFallbackYears(strategy) {
+  if (Array.isArray(strategy.fallbackYears) && strategy.fallbackYears.length > 0) {
+    return strategy.fallbackYears;
+  }
+
+  if (strategy.matchType !== "exact") {
+    return null;
+  }
+
+  const variant = String(strategy.variant ?? "").toLowerCase();
+  if (/(^https?:\/\/)?(www\.)?twitter\.com(?::80)?\/?$/.test(variant)) {
+    return twitterArchiveFallbackYears();
+  }
+
+  return null;
 }
 
 export function cdxQueryParams(urlPattern, window = null, options = {}) {
@@ -1233,12 +1300,24 @@ async function queryCdxOnce(strategyOrVariant, window = null) {
 
 async function queryCdxFallbackWindows(strategyOrVariant, broadError) {
   const strategy = normalizeCdxStrategy(strategyOrVariant);
-  const windows = cdxFallbackQueryWindows();
+  const fallbackStrategy = {
+    ...strategy,
+    collapseByYear: true
+  };
+  const fallbackYears = highVolumeExactFallbackYears(strategy);
+  const windows = cdxFallbackQueryWindows(
+    fallbackYears
+      ? {
+          years: fallbackYears,
+          maxQueries: strategy.fallbackMaxQueries ?? 14
+        }
+      : undefined
+  );
   const windowResults = await mapWithConcurrency(windows, cdxConcurrency, async (window) => {
     let lastError = null;
     for (let attempt = 1; attempt <= cdxFallbackRetryCount + 1; attempt += 1) {
       try {
-        const captures = await queryCdxOnce(strategy, window);
+        const captures = await queryCdxOnce(fallbackStrategy, window);
         return {
           status: "ok",
           window,
@@ -1279,7 +1358,7 @@ async function queryCdxFallbackWindows(strategyOrVariant, broadError) {
     variant: strategy.variant,
     matchType: strategy.matchType,
     broad: strategy.broad,
-    collapseByYear: strategy.collapseByYear,
+    collapseByYear: true,
     status: "ok",
     attempts: cdxRetryCount + 1 + windows.length,
     captureCount: captures.length,
@@ -1294,6 +1373,16 @@ async function queryCdxFallbackWindows(strategyOrVariant, broadError) {
 
 async function queryCdx(strategyOrVariant) {
   const strategy = normalizeCdxStrategy(strategyOrVariant);
+  if (strategy.fallbackOnly) {
+    const fallbackResult = await queryCdxFallbackWindows(
+      strategy,
+      new Error(`Using bounded CDX fallback for ${strategy.variant}`)
+    );
+    if (fallbackResult) {
+      return fallbackResult;
+    }
+  }
+
   let lastError = null;
   for (let attempt = 1; attempt <= cdxRetryCount + 1; attempt += 1) {
     try {
@@ -1363,9 +1452,10 @@ function candidateFromCapture(capture, reason, rank) {
     timestamp: capture.timestamp,
     date: timestampDate(capture.timestamp),
     original: capture.original,
-    replayUrl: waybackReplayUrl(capture.timestamp, capture.original),
+    replayUrl: capture.replayUrl ?? waybackReplayUrl(capture.timestamp, capture.original),
     reason,
-    rank
+    rank,
+    savePageNow: Boolean(capture.savePageNow)
   };
 }
 
@@ -1410,6 +1500,199 @@ function selectYearCandidateCaptures(yearCaptures) {
     .map(({ capture, reason }) => ({ capture, reason }))
     .sort((a, b) => a.capture.timestamp.localeCompare(b.capture.timestamp))
     .slice(0, limit);
+}
+
+function savePageNowEnabled() {
+  return process.env.RETROSITE_DISABLE_SAVE_PAGE_NOW !== "1";
+}
+
+function savePageNowHeaders() {
+  const headers = {
+    "user-agent": "Retrosite/0.2.0 (+https://github.com/krynsky/retrosite)"
+  };
+  if (savePageNowAccessKey && savePageNowSecretKey) {
+    headers.authorization = `LOW ${savePageNowAccessKey}:${savePageNowSecretKey}`;
+  }
+  return headers;
+}
+
+function parseSavePageNowLocation(value, originalUrl) {
+  if (!value) {
+    return null;
+  }
+
+  const location = String(value);
+  const match = location.match(/\/web\/(\d{14})(?:[a-z_]+)?\/(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  let original = originalUrl;
+  try {
+    original = decodeURIComponent(match[2]);
+  } catch {
+    original = match[2];
+  }
+
+  return {
+    timestamp: match[1],
+    original: /^https?:\/\//i.test(original) ? original : originalUrl
+  };
+}
+
+export function savePageNowCaptureFromResponse({ body = null, headers = {}, originalUrl }) {
+  const headerGetter = typeof headers?.get === "function"
+    ? (name) => headers.get(name)
+    : (name) => headers?.[name] ?? headers?.[name.toLowerCase()];
+  const locations = [
+    headerGetter("content-location"),
+    headerGetter("location"),
+    body?.replay_url,
+    body?.replayUrl,
+    body?.snapshot_url,
+    body?.snapshotUrl,
+    body?.web_url,
+    body?.webUrl
+  ];
+
+  let parsedLocation = null;
+  for (const location of locations) {
+    parsedLocation = parseSavePageNowLocation(location, originalUrl);
+    if (parsedLocation) {
+      break;
+    }
+  }
+
+  const timestamp = String(body?.timestamp ?? parsedLocation?.timestamp ?? "").match(/^\d{14}$/)?.[0] ?? null;
+  if (!timestamp) {
+    return null;
+  }
+
+  const original = body?.original_url ?? body?.originalUrl ?? body?.url ?? parsedLocation?.original ?? originalUrl;
+  const replayUrl = body?.replay_url ?? body?.replayUrl ?? body?.snapshot_url ?? body?.snapshotUrl ?? waybackReplayUrl(timestamp, original);
+
+  return {
+    timestamp,
+    date: timestampDate(timestamp),
+    original,
+    replayUrl,
+    statuscode: "200",
+    mimetype: "text/html",
+    digest: `save-page-now:${timestamp}`,
+    savePageNow: true
+  };
+}
+
+async function readSavePageNowBody(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { text };
+  }
+}
+
+export async function requestSavePageNow(reportTarget, { fetchImpl = fetch } = {}) {
+  if (!savePageNowEnabled()) {
+    return {
+      status: "skipped",
+      reason: "Save Page Now is disabled."
+    };
+  }
+
+  const originalUrl = liveUrlForReportTarget(reportTarget);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, savePageNowTimeoutMs));
+  try {
+    const response = await fetchImpl(`https://web.archive.org/save/${originalUrl}`, {
+      method: "POST",
+      headers: savePageNowHeaders(),
+      redirect: "manual",
+      signal: controller.signal
+    });
+    const body = await readSavePageNowBody(response);
+    if (response.status < 200 || response.status >= 400) {
+      return {
+        status: "failed",
+        liveUrl: originalUrl,
+        httpStatus: response.status,
+        reason: shortStatusMessage(
+          body?.message ?? body?.text,
+          `Wayback Save Page Now returned HTTP ${response.status}.`
+        )
+      };
+    }
+
+    const capture = savePageNowCaptureFromResponse({ body, headers: response.headers, originalUrl });
+    if (!capture) {
+      return {
+        status: "pending",
+        liveUrl: originalUrl,
+        httpStatus: response.status,
+        reason: "Wayback accepted the save request but did not return a usable timestamp yet."
+      };
+    }
+
+    return {
+      status: "captured",
+      liveUrl: originalUrl,
+      httpStatus: response.status,
+      timestamp: capture.timestamp,
+      replayUrl: capture.replayUrl,
+      capture
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      liveUrl: originalUrl,
+      reason: error?.name === "AbortError" ? "Wayback Save Page Now timed out." : shortStatusMessage(errorMessage(error))
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function mergeSavePageNowCapture(discovery, capture) {
+  if (!capture?.timestamp || !capture?.original) {
+    return discovery;
+  }
+
+  const existingCaptures = Array.isArray(discovery?.captures) ? discovery.captures : [];
+  const captureKey = `${capture.timestamp}:${capture.original}`;
+  const hasCapture = existingCaptures.some((existing) => `${existing.timestamp}:${existing.original}` === captureKey);
+  const captures = hasCapture
+    ? existingCaptures
+    : [...existingCaptures, {
+        ...capture,
+        date: capture.date ?? timestampDate(capture.timestamp),
+        replayUrl: capture.replayUrl ?? waybackReplayUrl(capture.timestamp, capture.original)
+      }];
+
+  const existingCandidates = Array.isArray(discovery?.candidates) ? discovery.candidates : [];
+  const hasCandidate = existingCandidates.some((candidate) => `${candidate.timestamp}:${candidate.original}` === captureKey);
+  const candidates = hasCandidate
+    ? existingCandidates
+    : [
+        ...existingCandidates,
+        {
+          ...candidateFromCapture(capture, "Current live page archived by Save Page Now.", -1),
+          date: capture.date ?? timestampDate(capture.timestamp)
+        }
+      ];
+
+  const sortedCaptures = captures.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const sortedCandidates = candidates.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  return {
+    ...discovery,
+    captureCount: Math.max(Number(discovery?.captureCount ?? 0), sortedCaptures.length),
+    yearSummary: summarizeCaptures(sortedCaptures),
+    candidates: sortedCandidates,
+    captures: sortedCaptures
+  };
 }
 
 export function pickCandidateEras(captures) {
@@ -1634,7 +1917,8 @@ function createDraftReport(discovery) {
       screenshotQuality: null,
       replacementOf: null,
       replacementAttempts: [],
-      candidateRank: candidate.rank ?? 0
+      candidateRank: candidate.rank ?? 0,
+      savePageNow: Boolean(candidate.savePageNow)
     }))
   };
 }
@@ -1834,8 +2118,21 @@ export function candidateRenderBudget(job) {
 }
 
 export function selectEntriesForCandidateRender(entries, limit) {
+  const selectedKeys = new Set();
+  const selected = [];
+  for (const entry of entries.filter((candidate) => candidate.savePageNow)) {
+    if (selected.length >= limit) {
+      return selected;
+    }
+    selected.push(entry);
+    selectedKeys.add(entryKey(entry));
+  }
+
   const byYear = new Map();
   for (const entry of entries) {
+    if (selectedKeys.has(entryKey(entry))) {
+      continue;
+    }
     const year = entry.date.slice(0, 4);
     if (!byYear.has(year)) {
       byYear.set(year, []);
@@ -1852,7 +2149,6 @@ export function selectEntriesForCandidateRender(entries, limit) {
       })
     );
 
-  const selected = [];
   let depth = 0;
   while (selected.length < limit) {
     let added = false;
@@ -2220,6 +2516,7 @@ function publicJob(job) {
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     events: job.events,
+    savePageNow: job.savePageNow ?? null,
     discovery: job.discovery,
     report: job.report,
     error: job.error,
@@ -3133,6 +3430,8 @@ async function runReportJob(job) {
       message: "Querying Wayback Machine captures for this target."
     });
 
+    const savePageNowPromise = requestSavePageNow(job.target);
+
     let discovery;
     try {
       discovery = await discoverCapturesWithMode(job.target, { archiveMode: job.archiveMode });
@@ -3148,6 +3447,31 @@ async function runReportJob(job) {
     }
     if (discovery.captureCount === 0) {
       throw new Error("No captures were found for this report target.");
+    }
+
+    const savePageNowResult = await savePageNowPromise;
+    job.savePageNow = savePageNowResult?.capture
+      ? {
+          status: savePageNowResult.status,
+          liveUrl: savePageNowResult.liveUrl,
+          httpStatus: savePageNowResult.httpStatus ?? null,
+          timestamp: savePageNowResult.timestamp,
+          replayUrl: savePageNowResult.replayUrl
+        }
+      : savePageNowResult;
+    if (savePageNowResult?.capture) {
+      discovery = mergeSavePageNowCapture(discovery, savePageNowResult.capture);
+      job.events.push({
+        at: new Date().toISOString(),
+        stage: "discovering",
+        message: "Wayback saved the current live page and Retrosite added it as a candidate capture."
+      });
+    } else if (savePageNowResult?.status !== "skipped") {
+      job.events.push({
+        at: new Date().toISOString(),
+        stage: "discovering",
+        message: `Wayback Save Page Now did not return a current capture: ${savePageNowResult?.reason ?? "No timestamp was returned."}`
+      });
     }
 
     const archiveProfile = adaptiveArchiveProfile({ depthMode: job.depthMode, discovery });
@@ -3294,14 +3618,6 @@ app.post("/api/reports", (request, response) => {
       return;
     }
 
-    const existingCompleteJob = [...reportJobs.values()].find(
-      (job) => job.host === host && (job.status === "complete" || job.status === "incomplete")
-    );
-    if (existingCompleteJob) {
-      response.status(200).json({ existingReportId: existingCompleteJob.id, host: existingCompleteJob.host });
-      return;
-    }
-
     if (activeJobs.length >= maxActiveJobCount()) {
       response.status(429).json({
         error: `Retrosite is already running ${activeJobs.length} report jobs. Try again after one finishes.`
@@ -3322,13 +3638,18 @@ app.post("/api/reports", (request, response) => {
         ? depthScreenshotLimit(requestedDepthMode)
         : normalizeScreenshotLimit(request.body?.screenshotLimit);
     const notifyEmail = normalizeNotifyEmail(request.body?.notifyEmail);
+    const nextVersion = nextVersionForDomain(host);
     const job = createQueuedReportJob({
       host,
       screenshotLimit: requestedScreenshotLimit,
       depthMode: requestedDepthMode,
       archiveMode: requestedArchiveMode,
       notifyEmail,
-      version: nextVersionForDomain(host)
+      version: nextVersion,
+      message:
+        nextVersion > 1
+          ? `New version ${nextVersion} created from homepage submission.`
+          : "Report job created."
     });
 
     reportJobs.set(job.id, job);

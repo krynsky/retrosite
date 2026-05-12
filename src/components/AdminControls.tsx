@@ -180,7 +180,7 @@ export function AdminControls({
             >
               <div>
                 <span>{year}</span>
-                <em>{included ? "Included" : "Excluded"}</em>
+                <em>{included ? "Included" : "Candidate"}</em>
                 {editing ? (
                   <div className="entry-edit-form">
                     <label>

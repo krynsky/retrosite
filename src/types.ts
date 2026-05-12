@@ -14,6 +14,7 @@ export type Candidate = {
   replayUrl: string;
   reason: string;
   rank?: number;
+  savePageNow?: boolean;
 };
 
 export type DiscoveryResult = {
@@ -120,7 +121,17 @@ export type DraftReportEntry = {
     original: string;
   }>;
   candidateRank?: number;
+  savePageNow?: boolean;
 };
+
+export type SavePageNowResult = {
+  status: string;
+  liveUrl?: string;
+  httpStatus?: number | null;
+  timestamp?: string;
+  replayUrl?: string;
+  reason?: string;
+} | null;
 
 export type DraftReport = {
   title: string;
@@ -203,6 +214,7 @@ export type ReportJob = {
     stage: string;
     message: string;
   }>;
+  savePageNow?: SavePageNowResult;
   discovery: DiscoveryResult | null;
   report: DraftReport | null;
   error: string | null;

@@ -39,7 +39,7 @@ function apiErrorMessage(payload: unknown, fallbackMessage: string) {
 }
 
 export default function LocalTimelineForm({ idleIcon }: LocalTimelineFormProps) {
-  const [domain, setDomain] = useState("");
+  const [domain, setDomain] = useState(() => new URLSearchParams(window.location.search).get("target") ?? "");
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [depthMode, setDepthMode] = useState<DepthMode>("adaptive");
