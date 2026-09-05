@@ -179,8 +179,8 @@ test("report creation rejects invalid notification email", async (t) => {
   assert.equal(payload.error, "Enter a valid email address for notifications.");
 });
 
-test("request-only mode exposes public config and accepts timeline requests", async (t) => {
-  const { baseUrl, generatedRoot } = await startTestServerContext(t, testPort + 10, {
+test("request-only mode exposes read-only public config and rejects report mutation", async (t) => {
+  const { baseUrl } = await startTestServerContext(t, testPort + 10, {
     RETROSITE_MODE: "request-only"
   });
 
@@ -190,33 +190,8 @@ test("request-only mode exposes public config and accepts timeline requests", as
   assert.deepEqual(config, {
     mode: "request-only",
     canGenerateReports: false,
-    canEditReports: false,
-    canSubmitRequests: true,
-    requestSink: "local",
-    requestStatusUrl: null
+    canEditReports: false
   });
-
-  const requestResponse = await fetch(`${baseUrl}/api/requests`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      url: "http://friendfeed.com/krynsky"
-    })
-  });
-  assert.equal(requestResponse.status, 202);
-  const payload = await requestResponse.json();
-  assert.equal(payload.request.target, "friendfeed.com/krynsky");
-  assert.equal(payload.request.domain, "friendfeed.com");
-  assert.equal(payload.request.path, "/krynsky");
-  assert.equal("email" in payload.request, false);
-  assert.equal("notes" in payload.request, false);
-
-  const requestFile = path.join(generatedRoot, "requests", `${payload.request.createdAt.replace(/[:.]/g, "-")}-${payload.request.id}.json`);
-  await waitForFile(requestFile);
-  const savedRequest = JSON.parse(await readFile(requestFile, "utf8"));
-  assert.equal(savedRequest.id, payload.request.id);
 
   const createResponse = await fetch(`${baseUrl}/api/reports`, {
     method: "POST",
@@ -240,21 +215,6 @@ test("request-only mode exposes public config and accepts timeline requests", as
     })
   });
   assert.equal(editResponse.status, 403);
-});
-
-test("request-only config exposes timeline request issue search when configured", async (t) => {
-  const { baseUrl } = await startTestServerContext(t, testPort + 11, {
-    RETROSITE_MODE: "request-only",
-    RETROSITE_REQUEST_REPO: "https://github.com/krynsky/retrosite.git"
-  });
-
-  const configResponse = await fetch(`${baseUrl}/api/config`);
-  assert.equal(configResponse.status, 200);
-  const config = await configResponse.json();
-  assert.equal(
-    config.requestStatusUrl,
-    "https://github.com/search?q=repo%3Akrynsky%2Fretrosite%20is%3Aissue%20label%3Atimeline-request&type=issues"
-  );
 });
 
 test("queued report jobs can be canceled", async (t) => {

@@ -19,7 +19,6 @@ let reportRunQueue = Promise.resolve();
 const currentFile = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(currentFile);
 const generatedRoot = process.env.RETROSITE_GENERATED_ROOT ?? path.join(__dirname, "generated");
-const requestQueueRoot = process.env.RETROSITE_REQUEST_QUEUE_ROOT ?? path.join(generatedRoot, "requests");
 const notificationOutboxRoot = process.env.RETROSITE_NOTIFICATION_OUTBOX ?? path.join(generatedRoot, "notifications");
 const staticTimelinesRoot = process.env.RETROSITE_STATIC_TIMELINES_ROOT ?? path.join(__dirname, "..", "demosite", "timelines");
 const clientDistRoot = path.join(__dirname, "..", "dist");
@@ -242,32 +241,6 @@ function normalizeNotifyEmail(input) {
   return value;
 }
 
-function normalizeTimelineRequestBody(body) {
-  const target = String(body?.url ?? "").trim();
-  if (!target) {
-    throw new Error("Missing url in request body.");
-  }
-
-  const reportTarget = normalizeReportTarget(target);
-  return {
-    id: randomUUID(),
-    url: target,
-    target: reportTarget.target,
-    domain: reportTarget.domain,
-    path: reportTarget.path,
-    status: "new",
-    createdAt: new Date().toISOString()
-  };
-}
-
-async function writeTimelineRequest(requestRecord) {
-  await mkdir(requestQueueRoot, { recursive: true });
-  const filename = `${requestRecord.createdAt.replace(/[:.]/g, "-")}-${requestRecord.id}.json`;
-  const outputFile = path.join(requestQueueRoot, filename);
-  await writeFile(outputFile, JSON.stringify(requestRecord, null, 2), "utf8");
-  return outputFile;
-}
-
 function activeReportJobs() {
   return [...reportJobs.values()].filter((job) => job.status === "queued" || job.status === "running");
 }
@@ -346,30 +319,12 @@ function includeStaticTimelineSummaries() {
   return process.env.RETROSITE_INCLUDE_STATIC_TIMELINES === "1";
 }
 
-function githubTimelineRequestSearchUrl(repo) {
-  const normalizedRepo = String(repo ?? "")
-    .trim()
-    .replace(/^https:\/\/github\.com\//i, "")
-    .replace(/\.git$/i, "")
-    .replace(/^\/+|\/+$/g, "");
-
-  if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(normalizedRepo)) {
-    return null;
-  }
-
-  const query = `repo:${normalizedRepo} is:issue label:timeline-request`;
-  return `https://github.com/search?q=${encodeURIComponent(query)}&type=issues`;
-}
-
 function publicConfig() {
   const mode = retrositeMode();
   return {
     mode,
     canGenerateReports: mode === "local",
-    canEditReports: mode === "local",
-    canSubmitRequests: mode === "request-only",
-    requestSink: process.env.RETROSITE_REQUEST_SINK ?? "local",
-    requestStatusUrl: githubTimelineRequestSearchUrl(process.env.RETROSITE_REQUEST_REPO)
+    canEditReports: mode === "local"
   };
 }
 
@@ -3550,18 +3505,6 @@ app.get("/api/health", (_request, response) => {
 
 app.get("/api/config", (_request, response) => {
   response.json(publicConfig());
-});
-
-app.post("/api/requests", async (request, response) => {
-  try {
-    const timelineRequest = normalizeTimelineRequestBody(request.body);
-    await writeTimelineRequest(timelineRequest);
-    response.status(202).json({ request: timelineRequest });
-  } catch (error) {
-    response.status(400).json({
-      error: error instanceof Error ? error.message : "Unable to submit timeline request."
-    });
-  }
 });
 
 app.get("/api/reports", async (request, response) => {

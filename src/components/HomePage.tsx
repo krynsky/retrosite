@@ -1,12 +1,11 @@
-import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
-import type { ReportJobSummary, TimelineRequest } from "../types";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Github } from "lucide-react";
+import type { ReportJobSummary } from "../types";
 import { useAppConfig } from "../useAppConfig";
 import { SiteNav } from "./SiteNav";
 import { ReportCard } from "./ReportCard";
 import { Polaroid } from "./primitives/Polaroid";
 import { MarkerText } from "./primitives/MarkerText";
-import { DomainField } from "./primitives/DomainField";
 import { StampButton } from "./primitives/StampButton";
 import { PixelIcon } from "./primitives/PixelIcon";
 
@@ -26,13 +25,6 @@ function PixelArrow() {
 }
 
 export function HomePage() {
-  const [domain, setDomain] = useState("");
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const [requestSuccess, setRequestSuccess] = useState<{
-    target: string;
-    issueUrl: string | null;
-  } | null>(null);
   const { config, loaded: configLoaded } = useAppConfig();
   const [recentJobs, setRecentJobs] = useState<ReportJobSummary[]>([]);
   const [recentError, setRecentError] = useState("");
@@ -101,38 +93,6 @@ export function HomePage() {
     };
   }, [configLoaded, recentJobsRunning, requestOnlyMode]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!domain.trim()) return;
-
-    setSubmitLoading(true);
-    setSubmitError("");
-    setRequestSuccess(null);
-
-    try {
-      const response = await fetch("/api/requests", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: domain.trim() })
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to submit timeline request.");
-      }
-
-      const requestRecord = payload.request as TimelineRequest;
-      setRequestSuccess({
-        target: requestRecord.target,
-        issueUrl: requestRecord.issueUrl ?? null
-      });
-      setDomain("");
-    } catch (caught) {
-      setSubmitError(caught instanceof Error ? caught.message : "Unable to submit timeline request.");
-    } finally {
-      setSubmitLoading(false);
-    }
-  }
-
   async function handleDelete(id: string) {
     try {
       const response = await fetch(`/api/reports/${id}`, { method: "DELETE" });
@@ -162,58 +122,24 @@ export function HomePage() {
             <MarkerText tone="double">the Wayback Machine</MarkerText>
           </h1>
 
-          {!configLoaded && (
-            <form className="domain-block" aria-label="Timeline form loading">
-              <DomainField placeholder="example.com/path" disabled aria-label="Domain or path" />
-              <StampButton type="button" tone="primary" size="lg" disabled icon={<PixelArrow />}>
-                Loading
-              </StampButton>
-            </form>
-          )}
           {configLoaded && requestOnlyMode && (
-            <>
-              <form className="domain-block" onSubmit={handleSubmit}>
-                <DomainField
-                  value={domain}
-                  onChange={(event) => setDomain(event.target.value)}
-                  placeholder="example.com/path"
-                  required
-                  aria-label="Domain or path"
-                />
-                <StampButton
-                  type="submit"
-                  tone="primary"
-                  size="lg"
-                  disabled={submitLoading}
-                  icon={submitLoading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <PixelArrow />}
-                >
-                  Request Timeline
-                </StampButton>
-                {config.requestStatusUrl && (
-                  <p className="request-status-link">
-                    You can view the status of previous submissions{" "}
-                    <a href={config.requestStatusUrl} target="_blank" rel="noreferrer">
-                      here
-                    </a>.
-                  </p>
-                )}
-              </form>
-              {submitError && <p className="error-note">{submitError}</p>}
-              {requestSuccess && (
-                <p className="success-note">
-                  Request saved for {requestSuccess.target}.
-                  {requestSuccess.issueUrl && (
-                    <>
-                      {" "}
-                      You can monitor the status of your submission{" "}
-                      <a href={requestSuccess.issueUrl} target="_blank" rel="noreferrer">
-                        here
-                      </a>.
-                    </>
-                  )}
-                </p>
-              )}
-            </>
+            <div className="demo-cta">
+              <p className="demo-cta-copy">
+                This site is a read-only showcase of published timelines. Download Retrosite from GitHub to
+                generate your own timelines for any public website, on your own machine.
+              </p>
+              <StampButton
+                as="a"
+                href="https://github.com/krynsky/retrosite"
+                tone="primary"
+                size="lg"
+                target="_blank"
+                rel="noopener noreferrer"
+                icon={<Github size={18} aria-hidden="true" />}
+              >
+                Get Retrosite on GitHub
+              </StampButton>
+            </div>
           )}
           {configLoaded && !requestOnlyMode && (
             <Suspense fallback={null}>

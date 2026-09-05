@@ -5,9 +5,6 @@ import { ReportsPage } from "./components/ReportsPage";
 import { SiteNav } from "./components/SiteNav";
 import { decodeTimelinePath } from "./helpers";
 
-const timelineRequestStatusUrl =
-  "https://github.com/search?q=repo%3Akrynsky%2Fretrosite%20is%3Aissue%20label%3Atimeline-request&type=issues";
-
 const demoProcessSteps = [
   {
     number: "01",
@@ -17,31 +14,12 @@ const demoProcessSteps = [
   },
   {
     number: "02",
-    title: "Request a timeline",
-    summary: "Suggest a domain or domain/path for a future published timeline.",
-    detail: "Requests go into a review queue instead of generating immediately. This keeps the hosted demo focused, avoids public abuse, and lets each timeline be checked before it appears on the site."
-  },
-  {
-    number: "03",
-    title: "Review timeline request status",
-    summary: "Check the review queue for current and past timeline submissions.",
-    detail: (
-      <>
-        Each submission creates a GitHub issue with the submitted domain or path, original URL, and created time. Review
-        the filtered{" "}
-        <a href={timelineRequestStatusUrl}>timeline request issues</a>
-        {" "}to see open and closed requests without mixing in unrelated project issues.
-      </>
-    )
-  },
-  {
-    number: "04",
     title: "Author publishes updates",
-    summary: "Approved timelines are generated, curated, and promoted into the demo.",
+    summary: "The author curates and promotes new timelines into the demo.",
     detail: "The author runs Retrosite locally, reviews the Wayback captures and screenshots, publishes the finished timeline as static assets, then deploys the update so the new timeline appears in the public gallery."
   },
   {
-    number: "05",
+    number: "03",
     title: "Run your own copy",
     summary: "Anyone can create their own reports by downloading Retrosite from GitHub.",
     detail: "Clone or download the app from github.com/krynsky/retrosite, install the dependencies, run it on your own machine, and enter a public domain or path. Your local copy can discover Wayback captures, render screenshots, curate entries, and export a report without depending on the demo site."
@@ -165,10 +143,10 @@ function AboutPage() {
           Retrosite demo site is a showcase of website timelines published by{" "}
           <a href="https://krynsky.com">Mark Krynsky</a>. The timelines leverage the{" "}
           <a href="https://web.archive.org/">Wayback Machine</a> to identify and create screenshots for each year
-          represented in the lifespan of a website. You can browse finished timelines and suggest future ones, while
-          report generation and editing stay in the local app. You can{" "}
+          represented in the lifespan of a website. This site is a read-only gallery; report generation and editing
+          stay in the local app. You can{" "}
           <a href="https://github.com/krynsky/retrosite">install and run</a> Retrosite on your own machine to generate
-          reports.
+          reports for any public website.
         </p>
       </section>
 

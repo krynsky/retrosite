@@ -4,10 +4,7 @@ import type { AppConfig } from "./types";
 export const defaultAppConfig: AppConfig = {
   mode: "local",
   canGenerateReports: true,
-  canEditReports: true,
-  canSubmitRequests: false,
-  requestSink: "local",
-  requestStatusUrl: null
+  canEditReports: true
 };
 
 export function normalizeAppConfig(payload: Partial<AppConfig> | null | undefined): AppConfig {
@@ -15,13 +12,7 @@ export function normalizeAppConfig(payload: Partial<AppConfig> | null | undefine
   return {
     mode,
     canGenerateReports: payload?.canGenerateReports ?? mode === "local",
-    canEditReports: payload?.canEditReports ?? mode === "local",
-    canSubmitRequests: payload?.canSubmitRequests ?? mode === "request-only",
-    requestSink: String(payload?.requestSink ?? "local"),
-    requestStatusUrl:
-      typeof payload?.requestStatusUrl === "string" && payload.requestStatusUrl
-        ? payload.requestStatusUrl
-        : null
+    canEditReports: payload?.canEditReports ?? mode === "local"
   };
 }
 

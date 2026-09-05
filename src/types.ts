@@ -264,18 +264,4 @@ export type AppConfig = {
   mode: "local" | "request-only";
   canGenerateReports: boolean;
   canEditReports: boolean;
-  canSubmitRequests: boolean;
-  requestSink: string;
-  requestStatusUrl: string | null;
-};
-
-export type TimelineRequest = {
-  id: string;
-  url: string;
-  target: string;
-  domain: string;
-  path: string;
-  status: "new" | string;
-  createdAt: string;
-  issueUrl?: string | null;
 };

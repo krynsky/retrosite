@@ -194,6 +194,22 @@ main {
   max-width: 430px;
 }
 
+.hero-left .demo-cta {
+  margin-top: 12px;
+  max-width: 430px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.demo-cta-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft, var(--ink));
+}
+
 .hero-headline {
   font-family: var(--font-display);
   font-weight: 800;
