@@ -20,6 +20,14 @@ demosite/timelines/*
 !demosite/timelines/friendfeed.com/**
 !demosite/timelines/krynsky.com/
 !demosite/timelines/krynsky.com/**
+!demosite/timelines/microsoft.com/
+!demosite/timelines/microsoft.com/**
+!demosite/timelines/twitter.com/
+!demosite/timelines/twitter.com/**
+!demosite/timelines/nytimes.com/
+!demosite/timelines/nytimes.com/**
+!demosite/timelines/github.com/
+!demosite/timelines/github.com/**
 npm-debug.log*
 *.log
 docs/screenshots/
